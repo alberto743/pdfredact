@@ -1,0 +1,9 @@
+version = 1
+SPDX-PackageName = "pdfredact"
+SPDX-PackageSupplier = "Alberto P."
+SPDX-PackageDownloadLocation = "NOASSERTION"
+
+[[annotations]]
+path = ["README.md", "CLAUDE.md", ".gitignore", "LICENSE"]
+SPDX-FileCopyrightText = "2026 Alberto P."
+SPDX-License-Identifier = "MPL-2.0"

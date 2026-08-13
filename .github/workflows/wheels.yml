@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 Alberto P.
+# SPDX-License-Identifier: MPL-2.0
+name: wheels
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build_wheels:
+    name: build+test wheel on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and test wheel with cibuildwheel
+        uses: pypa/cibuildwheel@v2.21
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
