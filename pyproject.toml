@@ -39,7 +39,7 @@ Repository = "https://github.com/alberto743/pdfredact"
 pdfredact = "pdfredact.cli:main"
 
 [project.optional-dependencies]
-test = ["pytest>=8"]
+test = ["pytest>=9.1.1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pdfredact"]
