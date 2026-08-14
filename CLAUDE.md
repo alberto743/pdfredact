@@ -75,13 +75,28 @@ assumes the package is installed (`pip install -e .[test]`) before running.
      reversed corners still work), `parse_fill_color()` (`"#RRGGBB"` → RGB float tuple). All
      three fail loudly (`fail()` → exit 2) on malformed input rather than silently producing an
      empty/no-op selection, since a silent no-op would mean a PDF that looks redacted but isn't.
+     Two input classes that *look* well-formed are rejected for exactly that reason: non-finite
+     `--box` coordinates (`float()` accepts `nan`/`inf`/`1e400`, and the resulting rect is
+     neither `is_empty` nor `is_valid`, so PyMuPDF takes the annotation and then drops it), and
+     `--fill-color` values that only pass because `int(x, 16)` tolerates signs and whitespace
+     (`"#-f0000"` → a negative component → opaque `TypeError` inside `add_redact_annot`) —
+     hence the strict `_HEX_COLOR_RE` match instead of a bare length check. `parse_page_ranges()`
+     still clamps a range's upper bound before materializing it (so `1-999999999` can't build a
+     billion-element set) but now warns that it truncated, matching how a bare out-of-range page
+     number is reported.
   2. **Match finding** — `find_rects_for_pattern()` runs a compiled regex against
      `page.get_text()`, deduplicates the matched strings, then uses `page.search_for()` to get
      rects. Literal terms (`-t`) are compiled as `re.escape()`'d patterns so they share the same
      regex pipeline as `-r`. Because `search_for()` is case-insensitive regardless of pattern
-     flags, case-sensitive mode is enforced with a secondary `get_textbox()` check.
+     flags, case-sensitive mode is enforced with a secondary `get_textbox()` check — that check
+     compares *whitespace-collapsed containment* (`box in needle`), not equality, because
+     `search_for()` returns one rect per line a match spans; equality dropped every fragment of a
+     multi-line match and silently left it unredacted. A matched string that resolves to no rect
+     at all is reported on stderr rather than skipped quietly.
   3. **Redaction** (`redact_pdf()`) — per page, collects rects from text search (only on pages in
-     `--pages`) plus explicit `--box` rects (which apply regardless of `--pages`), dedupes via
+     `--pages`) plus explicit `--box` rects (which apply regardless of `--pages`, and are dropped
+     with a warning if they don't intersect `page.rect`, since an off-page box wipes nothing but
+     would otherwise still be counted as a hit), dedupes via
      `dedupe_rects()`, then calls `add_redact_annot(fill=fill_color)` +
      `apply_redactions(images=PDF_REDACT_IMAGE_PIXELS)` so covered image pixels are wiped too,
      not just annotated over.

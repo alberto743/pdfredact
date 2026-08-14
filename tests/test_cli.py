@@ -99,3 +99,33 @@ def test_cli_invalid_fill_color(sample_pdf, tmp_path):
     result = run_cli(str(sample_pdf), str(out), "-t", "Mario Rossi", "--fill-color", "notacolor")
     assert result.returncode == 2
     assert "fill-color" in result.stderr
+
+
+@pytest.mark.parametrize("color", ["#-f0000", "# f0000"])
+def test_cli_out_of_range_fill_color_rejected(sample_pdf, tmp_path, color):
+    """These used to slip past validation and reach PyMuPDF, where a negative
+    component dies with an opaque TypeError traceback instead of exit 2."""
+    out = tmp_path / "out.pdf"
+    result = run_cli(str(sample_pdf), str(out), "-t", "Mario Rossi", "--fill-color", color)
+    assert result.returncode == 2
+    assert "fill-color" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_cli_non_finite_box_rejected(sample_pdf, tmp_path):
+    """'--box 1:nan,nan,nan,nan' used to exit 0 reporting 1 redacted
+    occurrence while leaving the document completely untouched."""
+    out = tmp_path / "out.pdf"
+    result = run_cli(str(sample_pdf), str(out), "--box", "1:nan,nan,nan,nan")
+    assert result.returncode == 2
+    assert "non-finite" in result.stderr
+    assert not out.exists()
+
+
+def test_cli_off_page_box_warns_and_reports_zero(sample_pdf, tmp_path):
+    out = tmp_path / "out.pdf"
+    result = run_cli(str(sample_pdf), str(out), "--box", "1:5000,5000,6000,6000")
+    assert result.returncode == 0
+    assert "outside the page area" in result.stderr
+    assert "Occurrences redacted (unique rectangles): 0" in result.stdout
+    assert "WARNING" in result.stderr  # unredacted-copy warning fires too

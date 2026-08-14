@@ -58,6 +58,13 @@ def test_parse_page_ranges_huge_upper_bound_does_not_hang():
     assert result == set(range(10))
 
 
+def test_parse_page_ranges_truncated_range_warns(capsys):
+    """Clamping a range's upper bound must be reported, exactly like a
+    single out-of-range page number is, instead of passing silently."""
+    assert parse_page_ranges("2-99", 3) == {1, 2}
+    assert "truncated" in capsys.readouterr().err
+
+
 # --- parse_box_spec ------------------------------------------------------
 
 def test_parse_box_spec_valid():
@@ -98,6 +105,21 @@ def test_parse_box_spec_non_numeric_fails():
     assert exc_info.value.code == 2
 
 
+@pytest.mark.parametrize("spec", [
+    "1:nan,nan,nan,nan",
+    "1:inf,0,100,100",
+    "1:0,0,-inf,100",
+    "1:0,0,1e400,100",  # overflows to inf
+])
+def test_parse_box_spec_non_finite_fails(spec):
+    """float() accepts 'nan'/'inf'; the resulting rectangle is neither empty
+    nor valid, so PyMuPDF accepts the annotation and then drops it - the run
+    would report the box as redacted while leaving the page untouched."""
+    with pytest.raises(SystemExit) as exc_info:
+        parse_box_spec(spec)
+    assert exc_info.value.code == 2
+
+
 # --- parse_fill_color ------------------------------------------------------
 
 def test_parse_fill_color_valid():
@@ -111,6 +133,16 @@ def test_parse_fill_color_without_hash():
 def test_parse_fill_color_invalid_fails():
     with pytest.raises(SystemExit) as exc_info:
         parse_fill_color("red")
+    assert exc_info.value.code == 2
+
+
+@pytest.mark.parametrize("spec", ["#-f0000", "# f0000", "#+f0000", "#ff 000", "##ff0000"])
+def test_parse_fill_color_rejects_lenient_int_forms(spec):
+    """int(x, 16) tolerates signs and surrounding whitespace, so these used to
+    pass the length check and yield a component outside [0, 1] (a negative one
+    crashes PyMuPDF with an opaque TypeError inside add_redact_annot)."""
+    with pytest.raises(SystemExit) as exc_info:
+        parse_fill_color(spec)
     assert exc_info.value.code == 2
 
 
@@ -134,6 +166,29 @@ def test_find_rects_for_pattern_empty_match_no_crash(sample_pdf):
     finally:
         doc.close()
     assert rects == []
+
+
+def test_find_rects_for_pattern_case_sensitive_keeps_multiline_match(make_pdf):
+    """search_for() returns one rect per line a match spans. Comparing each
+    fragment against the whole match string used to discard all of them, so
+    --case-sensitive silently left every multi-line match unredacted."""
+    pdf = make_pdf("multiline.pdf", ["AAA\nBBB\nKEEP"])
+    doc = fitz.open(str(pdf))
+    try:
+        pattern = re.compile(r"AAA.*BBB", re.S)
+        assert len(find_rects_for_pattern(doc[0], pattern, case_sensitive=True)) == 2
+    finally:
+        doc.close()
+
+
+def test_find_rects_for_pattern_case_sensitive_still_rejects_wrong_case(sample_pdf):
+    """The multi-line fix must not weaken the case check itself."""
+    doc = fitz.open(str(sample_pdf))
+    try:
+        pattern = re.compile(re.escape("mario rossi"))
+        assert find_rects_for_pattern(doc[0], pattern, case_sensitive=True) == []
+    finally:
+        doc.close()
 
 
 def test_dedupe_rects_removes_duplicates():
@@ -199,6 +254,44 @@ def test_redact_pdf_box_applies_regardless_of_pages_filter(sample_pdf, tmp_path)
     hits = redact_pdf(str(sample_pdf), str(out), [], [], [(1, rect)], False, "1")
     assert hits == 1
     assert "Page two" not in _extract_text(out, page_index=1)
+
+
+def test_redact_pdf_case_sensitive_multiline_actually_removes_text(make_pdf, tmp_path):
+    pdf = make_pdf("multiline.pdf", ["AAA\nBBB\nKEEP"])
+    out = tmp_path / "out.pdf"
+    hits = redact_pdf(str(pdf), str(out), [], [r"(?s)AAA.*BBB"], [], True, None)
+    assert hits == 2
+    text = _extract_text(out)
+    assert "AAA" not in text and "BBB" not in text
+    assert "KEEP" in text
+
+
+def test_redact_pdf_off_page_box_is_not_counted_as_a_hit(sample_pdf, tmp_path, capsys):
+    """add_redact_annot() accepts a box outside the page and then wipes
+    nothing: counting it would report a successful redaction for a typo'd
+    coordinate, hiding the fact that the content is still there."""
+    out = tmp_path / "out.pdf"
+    hits = redact_pdf(
+        str(sample_pdf), str(out), [], [], [(0, fitz.Rect(5000, 5000, 6000, 6000))],
+        False, None,
+    )
+    assert hits == 0
+    assert "outside the page area" in capsys.readouterr().err
+
+
+def test_redact_pdf_partially_off_page_box_still_applies(sample_pdf, tmp_path):
+    """Only a box with *no* overlap is dropped; a partially overlapping one
+    must still redact the part that lands on the page."""
+    doc = fitz.open(str(sample_pdf))
+    try:
+        rect = doc[0].search_for("Mario Rossi")[0]
+    finally:
+        doc.close()
+    out = tmp_path / "out.pdf"
+    overlapping = fitz.Rect(rect.x0, rect.y0, rect.x1 + 10_000, rect.y1)
+    hits = redact_pdf(str(sample_pdf), str(out), [], [], [(0, overlapping)], False, None)
+    assert hits == 1
+    assert "Mario Rossi" not in _extract_text(out).split("\n")[0]
 
 
 def test_redact_pdf_zero_hits_still_writes_output(sample_pdf, tmp_path):

@@ -100,6 +100,8 @@ Format: `PAGE:x0,y0,x1,y1`
 - `x0,y0,x1,y1` in PDF points (72 pt = 1 inch), origin at the top-left (same coordinate
   system returned by `page.search_for()`)
 - Corner order doesn't matter: the rectangle is normalized.
+- A box that falls entirely outside the page redacts nothing: it's reported on stderr and
+  not counted as a redacted occurrence, so a typo'd coordinate can't look like a success.
 
 ### Exit codes
 

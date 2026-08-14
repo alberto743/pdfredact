@@ -11,6 +11,7 @@ recoverable via copy-paste or text extraction).
 
 from __future__ import annotations
 
+import math
 import re
 import sys
 from typing import NoReturn
@@ -39,6 +40,7 @@ def parse_page_ranges(spec: str, n_pages: int) -> set[int]:
     PDF).
     """
     pages: set[int] = set()
+    truncated: list[str] = []
     for part in spec.split(","):
         part = part.strip()
         if not part:
@@ -52,6 +54,11 @@ def parse_page_ranges(spec: str, n_pages: int) -> set[int]:
                 if a > b:
                     fail(f"reversed page range in --pages: '{part}' "
                          f"(expected 'lower-higher', e.g. '5-7')")
+                # The upper bound is clamped before materializing the range so
+                # that '1-999999999' doesn't build a near-billion-element set;
+                # record the truncation so it is reported rather than silent.
+                if b > n_pages:
+                    truncated.append(part)
                 pages.update(range(a - 1, min(b, n_pages)))
             else:
                 n = int(part)
@@ -67,6 +74,10 @@ def parse_page_ranges(spec: str, n_pages: int) -> set[int]:
     if out_of_range:
         print(f"Warning: out-of-range pages ignored (the document has "
               f"{n_pages} pages): {out_of_range}", file=sys.stderr)
+    if truncated:
+        print(f"Warning: --pages range(s) {truncated} extend past the last page "
+              f"and were truncated (the document has {n_pages} pages)",
+              file=sys.stderr)
     if not valid:
         fail(f"--pages selects no valid page (document has {n_pages} pages)")
     return valid
@@ -100,6 +111,13 @@ def parse_box_spec(spec: str) -> tuple[int, "fitz.Rect"]:
         values = [float(c) for c in coords]
     except ValueError:
         fail(f"non-numeric coordinates in --box: '{coords_part}'")
+    # float() happily accepts 'nan', 'inf' and overflowing literals like
+    # '1e400'. PyMuPDF then builds an "infinite"/invalid rectangle that
+    # add_redact_annot() accepts but apply_redactions() silently drops: the run
+    # would report the box as redacted while leaving the content untouched.
+    if not all(math.isfinite(v) for v in values):
+        fail(f"non-finite coordinates in --box: '{coords_part}' "
+             f"(nan/inf/overflowing values are not valid coordinates)")
 
     # normalize() mutates the rectangle in-place; don't reassign the result
     # (depending on the PyMuPDF version it may return None instead of self,
@@ -112,16 +130,27 @@ def parse_box_spec(spec: str) -> tuple[int, "fitz.Rect"]:
     return page_no, rect
 
 
+_HEX_COLOR_RE = re.compile(r"\A[0-9A-Fa-f]{6}\Z")
+
+
 def parse_fill_color(spec: str) -> tuple[float, float, float]:
     """Convert '#RRGGBB' into an RGB tuple with components in [0, 1]."""
-    value = spec.strip().lstrip("#")
-    if len(value) != 6:
+    value = spec.strip()
+    if value.startswith("#"):
+        value = value[1:]
+    # int(x, 16) is lenient: it accepts a sign and surrounding whitespace, so
+    # '#-f0000' / '# f0000' / '#+f0000' would pass the length check and yield a
+    # component outside [0, 1] - a negative one makes PyMuPDF fail deep inside
+    # add_redact_annot() with an opaque TypeError. Validate the digits instead.
+    if not _HEX_COLOR_RE.match(value):
         fail(f"invalid --fill-color: '{spec}' (expected hex format '#RRGGBB')")
-    try:
-        r, g, b = (int(value[i:i + 2], 16) for i in (0, 2, 4))
-    except ValueError:
-        fail(f"invalid --fill-color: '{spec}' (expected hex format '#RRGGBB')")
+    r, g, b = (int(value[i:i + 2], 16) for i in (0, 2, 4))
     return r / 255, g / 255, b / 255
+
+
+def _collapse_ws(text: str) -> str:
+    """Collapse every whitespace run (including line breaks) into one space."""
+    return " ".join(text.split())
 
 
 def find_rects_for_pattern(
@@ -135,6 +164,10 @@ def find_rects_for_pattern(
     duplication when the same text appears more than once. If
     case_sensitive=True, filters the rectangles by checking the actual text
     inside them, because search_for() is internally case-insensitive.
+
+    A matched string that cannot be located on the page is reported on stderr:
+    staying silent would mean the caller counts fewer redactions than the
+    pattern matched without any way to notice the text survived.
     """
     text = page.get_text()
     # Empty matches (e.g. regex 'X*' or '.?' that can match an empty
@@ -145,13 +178,25 @@ def find_rects_for_pattern(
 
     rects = []
     for s in unique_strings:
-        found = page.search_for(s)
-        if not found:  # None or empty list
+        found = page.search_for(s) or []  # search_for() may return None
+        if case_sensitive:
+            # search_for() returns one rectangle per line the match spans, so a
+            # match crossing a line break comes back as several fragments.
+            # Comparing each fragment against the whole match string would
+            # discard every one of them (silently leaving multi-line matches
+            # unredacted), so check that the fragment's text occurs - with the
+            # original casing - inside the match.
+            needle = _collapse_ws(s)
+            found = [
+                r for r in found
+                if (box := _collapse_ws(page.get_textbox(r))) and box in needle
+            ]
+        if not found:
+            print(f"Warning: matched {s.strip()!r} on page {page.number + 1} but "
+                  f"could not locate it on the page - it was NOT redacted",
+                  file=sys.stderr)
             continue
-        for r in found:
-            if case_sensitive and page.get_textbox(r).strip() != s.strip():
-                continue
-            rects.append(r)
+        rects.extend(found)
     return rects
 
 
@@ -225,7 +270,18 @@ def redact_pdf(
                 for pattern in compiled_patterns:
                     rects.extend(find_rects_for_pattern(page, pattern, case_sensitive))
 
-            rects.extend(boxes_by_page.get(pno, []))
+            # A box entirely outside the page is accepted by add_redact_annot()
+            # but wipes nothing, so counting it as a hit would report a
+            # successful redaction for a typo'd coordinate (e.g. 5000 for 500,
+            # or bottom-left origin coordinates on a top-left origin page).
+            for rect in boxes_by_page.get(pno, []):
+                if (rect & page.rect).is_empty:
+                    print(f"Warning: --box {tuple(rect)} on page {pno + 1} lies "
+                          f"outside the page area {tuple(page.rect)} and "
+                          f"redacts nothing", file=sys.stderr)
+                    continue
+                rects.append(rect)
+
             rects = dedupe_rects(rects)
             if not rects:
                 continue

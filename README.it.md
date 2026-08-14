@@ -101,6 +101,8 @@ Formato: `PAGINA:x0,y0,x1,y1`
 - `x0,y0,x1,y1` in punti PDF (72 pt = 1 pollice), origine in alto a sinistra (stesso sistema
   restituito da `page.search_for()`)
 - L'ordine degli angoli è irrilevante: il rettangolo viene normalizzato.
+- Un rettangolo interamente fuori dalla pagina non oscura nulla: viene segnalato su stderr e
+  non conteggiato tra le occorrenze oscurate, così una coordinata errata non sembra un successo.
 
 ### Codici di uscita
 
