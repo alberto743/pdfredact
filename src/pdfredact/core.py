@@ -52,7 +52,7 @@ def parse_page_ranges(spec: str, n_pages: int) -> set[int]:
                 if a > b:
                     fail(f"reversed page range in --pages: '{part}' "
                          f"(expected 'lower-higher', e.g. '5-7')")
-                pages.update(range(a - 1, b))
+                pages.update(range(a - 1, min(b, n_pages)))
             else:
                 n = int(part)
                 if n < 1:
@@ -94,7 +94,7 @@ def parse_box_spec(spec: str) -> tuple[int, "fitz.Rect"]:
 
     coords = [c.strip() for c in coords_part.split(",")]
     if len(coords) != 4:
-        fail(f"invalid --box format: '{spec}' — expected 4 coordinates "
+        fail(f"invalid --box format: '{spec}' - expected 4 coordinates "
              f"(x0,y0,x1,y1), got {len(coords)}")
     try:
         values = [float(c) for c in coords]
@@ -108,7 +108,7 @@ def parse_box_spec(spec: str) -> tuple[int, "fitz.Rect"]:
     rect = fitz.Rect(*values)
     rect.normalize()
     if rect.is_empty:
-        fail(f"degenerate --box (zero area): '{spec}' — x0 and x1 (or y0 and y1) coincide")
+        fail(f"degenerate --box (zero area): '{spec}' - x0 and x1 (or y0 and y1) coincide")
     return page_no, rect
 
 
@@ -193,13 +193,13 @@ def redact_pdf(
 
         target_pages = (
             parse_page_ranges(page_spec, doc.page_count)
-            if page_spec else set(range(doc.page_count))
+            if page_spec is not None else set(range(doc.page_count))
         )
 
         # Boxes already specify their own page, so they aren't filtered by --pages
         boxes_by_page: dict[int, list] = {}
         for pno, rect in boxes:
-            if pno >= doc.page_count:
+            if pno < 0 or pno >= doc.page_count:
                 print(f"Warning: --box on page {pno + 1} ignored "
                       f"(the document has {doc.page_count} pages).", file=sys.stderr)
                 continue

@@ -51,6 +51,13 @@ def test_parse_page_ranges_partial_out_of_range_warns(capsys):
     assert "out-of-range" in capsys.readouterr().err
 
 
+def test_parse_page_ranges_huge_upper_bound_does_not_hang():
+    """A range like '1-999999999' must be clamped to n_pages before being
+    materialized, not turned into a near-billion-element set/range."""
+    result = parse_page_ranges("1-999999999", 10)
+    assert result == set(range(10))
+
+
 # --- parse_box_spec ------------------------------------------------------
 
 def test_parse_box_spec_valid():
@@ -200,6 +207,25 @@ def test_redact_pdf_zero_hits_still_writes_output(sample_pdf, tmp_path):
     assert hits == 0
     assert out.exists()
     assert "Mario Rossi" in _extract_text(out)  # unredacted copy
+
+
+def test_redact_pdf_negative_box_page_rejected(sample_pdf, tmp_path, capsys):
+    """A negative page index must be ignored with a warning, not silently
+    redact the last page via Python's negative indexing."""
+    out = tmp_path / "out.pdf"
+    rect = fitz.Rect(0, 0, 10, 10)
+    hits = redact_pdf(str(sample_pdf), str(out), [], [], [(-1, rect)], False, None)
+    assert hits == 0
+    assert "ignored" in capsys.readouterr().err
+
+
+def test_redact_pdf_empty_pages_spec_fails_loudly(sample_pdf, tmp_path):
+    """An explicit but empty --pages spec must fail like other malformed
+    specs, not silently fall back to 'all pages'."""
+    out = tmp_path / "out.pdf"
+    with pytest.raises(SystemExit) as exc_info:
+        redact_pdf(str(sample_pdf), str(out), ["Mario Rossi"], [], [], False, "")
+    assert exc_info.value.code == 2
 
 
 def test_redact_pdf_encrypted_input_rejected(encrypted_pdf, tmp_path):

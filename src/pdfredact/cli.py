@@ -61,12 +61,14 @@ def main() -> None:
         fail(f"input file not found: '{args.input}'")
     if os.path.exists(args.output) and os.path.samefile(args.input, args.output):
         fail("input and output are the same file: in-place redaction would "
-             "destroy the original — specify a different output file")
+             "destroy the original - specify a different output file")
     out_dir = os.path.dirname(os.path.abspath(args.output))
     if not os.path.isdir(out_dir):
         fail(f"output directory does not exist: '{out_dir}'")
     if any(not t.strip() for t in args.terms):
         fail("-t/--text cannot be an empty string")
+    if any(not r.strip() for r in args.regexes):
+        fail("-r/--regex cannot be an empty string")
 
     parsed_boxes = [parse_box_spec(b) for b in args.boxes]
     fill_color = parse_fill_color(args.fill_color)
@@ -80,7 +82,7 @@ def main() -> None:
     print(f"File saved to: {args.output}")
 
     if hits == 0:
-        print("WARNING: no occurrences found — the output file is an unredacted "
+        print("WARNING: no occurrences found - the output file is an unredacted "
               "copy. Check the searched text: it might be split across multiple "
               "lines, use a non-extractable font/encoding, or be image-only "
               "(a scanned PDF, which requires OCR).", file=sys.stderr)

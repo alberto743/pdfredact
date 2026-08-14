@@ -32,7 +32,7 @@ instructions) — this is the intended way for end users to get the `pdfredact` 
 touching a system Python environment.
 
 `pdfredact.__version__` is resolved dynamically at import time via
-`importlib.metadata.version("pdfredact")` (falls back to `"0.0.0"` if the package isn't
+`importlib.metadata.version("pdfredactcli")` (falls back to `"0.0.0"` if the package isn't
 installed) rather than being hardcoded in `__init__.py` — `pyproject.toml`'s `[project] version`
 is the single source of truth.
 
@@ -112,7 +112,7 @@ Known limitation callouts (already handled/documented in code, don't "fix" witho
 Verified compatible: only `os.path` is used (no hardcoded separators), no POSIX-only calls, and
 `os.path.samefile` has worked correctly on Windows since Python 3.2. `.github/workflows/tests.yml`
 runs the full suite on `windows-latest` (and macOS) alongside Linux on every push/PR, and
-`.github/workflows/wheels.yml` builds+tests the wheel via cibuildwheel on `windows-latest` too.
+`.github/workflows/wheels.yml` builds+tests the wheel on `windows-latest` too.
 All CLI output is plain ASCII English, so there's no `cmd.exe` code-page/encoding footnote to
 worry about (unlike the old Italian, accented-character messages this project used to print).
 

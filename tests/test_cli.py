@@ -58,6 +58,13 @@ def test_cli_empty_text_term(sample_pdf, tmp_path):
     assert "empty string" in result.stderr
 
 
+def test_cli_empty_regex_term(sample_pdf, tmp_path):
+    out = tmp_path / "out.pdf"
+    result = run_cli(str(sample_pdf), str(out), "-r", "   ")
+    assert result.returncode == 2
+    assert "empty string" in result.stderr
+
+
 def test_cli_no_selectors_given(sample_pdf, tmp_path):
     out = tmp_path / "out.pdf"
     result = run_cli(str(sample_pdf), str(out))
