@@ -12,7 +12,16 @@ underlying text (not recoverable via copy-paste or text extraction).
 Requires Python 3.10 or later. The only dependency is PyMuPDF, which publishes prebuilt wheels
 for Linux, Windows, and macOS (no compiler required).
 
+The package is published on PyPI as [`pdfredactcli`](https://pypi.org/project/pdfredactcli/)
+(the installed command is `pdfredact`).
+
 ### With pip
+
+```sh
+pip install pdfredactcli
+```
+
+or, from a local clone of the repository:
 
 ```sh
 pip install .
@@ -34,8 +43,11 @@ exposes only the `pdfredact` command on `PATH`, without touching the system Pyth
 ```sh
 python3 -m pip install --user pipx
 python3 -m pipx ensurepath
-pipx install .          # run from the root of the repository
+pipx install pdfredactcli
 ```
+
+Or, from a local clone of the repository, replace the last line with `pipx install .` (run
+from the root of the repository).
 
 **Windows:**
 
@@ -51,11 +63,14 @@ scoop install pipx
 pipx ensurepath
 ```
 
-Then, from the repository folder (in a new terminal, so `ensurepath` takes effect):
+Then, in a new terminal (so `ensurepath` takes effect):
 
 ```powershell
-pipx install .
+pipx install pdfredactcli
 ```
+
+Or, from a local clone of the repository, run `pipx install .` from the repository folder
+instead.
 
 In both cases, after installation the `pdfredact` command is available directly in a new
 terminal.

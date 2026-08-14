@@ -13,7 +13,16 @@ testo).
 Richiede Python 3.10 o superiore. L'unica dipendenza è PyMuPDF, che pubblica wheel
 precompilati per Linux, Windows e macOS (nessun compilatore richiesto).
 
+Il pacchetto è pubblicato su PyPI come [`pdfredactcli`](https://pypi.org/project/pdfredactcli/)
+(il comando installato è `pdfredact`).
+
 ### Con pip
+
+```sh
+pip install pdfredactcli
+```
+
+oppure, da un clone locale del repository:
 
 ```sh
 pip install .
@@ -35,8 +44,11 @@ espone solo il comando `pdfredact` nel `PATH`, senza toccare il Python di sistem
 ```sh
 python3 -m pip install --user pipx
 python3 -m pipx ensurepath
-pipx install .          # eseguito dalla radice del repository
+pipx install pdfredactcli
 ```
+
+Oppure, da un clone locale del repository, sostituire l'ultima riga con `pipx install .`
+(eseguito dalla radice del repository).
 
 **Windows:**
 
@@ -52,11 +64,14 @@ scoop install pipx
 pipx ensurepath
 ```
 
-Poi, dalla cartella del repository (in un nuovo terminale, per far effetto a `ensurepath`):
+Poi, in un nuovo terminale (per far effetto a `ensurepath`):
 
 ```powershell
-pipx install .
+pipx install pdfredactcli
 ```
+
+Oppure, da un clone locale del repository, eseguire `pipx install .` dalla cartella del
+repository.
 
 In entrambi i casi, dopo l'installazione il comando `pdfredact` è disponibile direttamente in
 un nuovo terminale.
