@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: MPL-2.0
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "pdfredact"
 version = "0.1.0"
-description = "Oscura (redazione vera, non solo visiva) di testo in un PDF con PyMuPDF"
+description = "Redact text in a PDF (true redaction, not just visual overlay) using PyMuPDF"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MPL-2.0"
@@ -31,20 +31,24 @@ classifiers = [
     "Topic :: Text Processing",
 ]
 
+[project.urls]
+Homepage = "https://github.com/alberto743/pdfredact"
+Repository = "https://github.com/alberto743/pdfredact"
+
 [project.scripts]
 pdfredact = "pdfredact.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/pdfredact"]
 
 [tool.cibuildwheel]
-# Pacchetto puro Python: cibuildwheel costruisce un'unica wheel py3-none-any e la
-# riutilizza per ogni identifier richiesto, ma esegue comunque test-command per
-# ciascuno — qui serve a validare install+test su Linux/Windows per ogni versione
-# di Python supportata, non a produrre wheel per-ABI.
+# Pure-Python package: cibuildwheel builds a single py3-none-any wheel and reuses
+# it for every requested identifier, but still runs test-command for each one —
+# here that validates install+test on Linux/Windows for every supported Python
+# version, not to produce per-ABI wheels.
 build = "cp310-* cp311-* cp312-* cp313-*"
 test-requires = "pytest"
 test-sources = ["tests"]

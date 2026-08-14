@@ -1,48 +1,49 @@
 # pdfredact
 
-Oscura (redazione vera, non solo visiva) di testo in un PDF, usando
-[PyMuPDF](https://pymupdf.readthedocs.io/). Individua le occorrenze del testo/pattern
-specificato, applica un'annotazione di redazione e la "brucia" nel contenuto della pagina,
-rimuovendo fisicamente il testo sottostante (non recuperabile con copia/incolla o estrazione
-testo).
+*[Leggi questo in italiano](README.it.md)*
 
-## Installazione
+Redact text in a PDF (true redaction, not just a visual overlay) using
+[PyMuPDF](https://pymupdf.readthedocs.io/). Finds occurrences of the specified text/pattern,
+applies a redaction annotation, and "burns" it into the page content, physically removing the
+underlying text (not recoverable via copy-paste or text extraction).
 
-Richiede Python 3.10 o superiore. L'unica dipendenza è PyMuPDF, che pubblica wheel
-precompilati per Linux, Windows e macOS (nessun compilatore richiesto).
+## Installation
 
-### Con pip
+Requires Python 3.10 or later. The only dependency is PyMuPDF, which publishes prebuilt wheels
+for Linux, Windows, and macOS (no compiler required).
+
+### With pip
 
 ```sh
 pip install .
 ```
 
-oppure, per sviluppo (installazione editabile con le dipendenze di test):
+or, for development (editable install with test dependencies):
 
 ```sh
 pip install -e .[test]
 ```
 
-### Con pipx (consigliato per un tool a riga di comando)
+### With pipx (recommended for a command-line tool)
 
-[pipx](https://pipx.pypa.io/stable/) installa il tool in un ambiente virtuale isolato ed
-espone solo il comando `pdfredact` nel `PATH`, senza toccare il Python di sistema.
+[pipx](https://pipx.pypa.io/stable/) installs the tool in an isolated virtual environment and
+exposes only the `pdfredact` command on `PATH`, without touching the system Python.
 
 **Linux/macOS:**
 
 ```sh
 python3 -m pip install --user pipx
 python3 -m pipx ensurepath
-pipx install .          # eseguito dalla radice del repository
+pipx install .          # run from the root of the repository
 ```
 
 **Windows:**
 
-Su Windows conviene installare `pipx` tramite [Scoop](https://scoop.sh/), che gestisce anche
-l'aggiornamento di Python stesso se necessario:
+On Windows it's convenient to install `pipx` via [Scoop](https://scoop.sh/), which also
+manages updating Python itself if needed:
 
 ```powershell
-# Se Scoop non è già installato:
+# If Scoop isn't already installed:
 Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
 
@@ -50,73 +51,77 @@ scoop install pipx
 pipx ensurepath
 ```
 
-Poi, dalla cartella del repository (in un nuovo terminale, per far effetto a `ensurepath`):
+Then, from the repository folder (in a new terminal, so `ensurepath` takes effect):
 
 ```powershell
 pipx install .
 ```
 
-In entrambi i casi, dopo l'installazione il comando `pdfredact` è disponibile direttamente in
-un nuovo terminale.
+In both cases, after installation the `pdfredact` command is available directly in a new
+terminal.
 
-## Utilizzo
+## Usage
 
 ```sh
 pdfredact input.pdf output.pdf -t "Mario Rossi" -t "CF: ABCDEF"
 pdfredact input.pdf output.pdf -r "\bMCNP-\d{4}\b"
-pdfredact input.pdf output.pdf -t "Confidenziale" --case-sensitive
+pdfredact input.pdf output.pdf -t "Confidential" --case-sensitive
 pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
 pdfredact input.pdf output.pdf --box "1:56,700,300,730"
 pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
 ```
 
-Equivalente senza installazione, dalla radice del repository:
+Equivalent without installing, from the root of the repository:
 
 ```sh
 python -m pdfredact input.pdf output.pdf -t "Mario Rossi"
 ```
 
-### Coordinate rettangolo (`--box`)
+### Rectangle coordinates (`--box`)
 
-Formato: `PAGINA:x0,y0,x1,y1`
+Format: `PAGE:x0,y0,x1,y1`
 
-- `PAGINA` è 1-based (pagina 1 = prima pagina)
-- `x0,y0,x1,y1` in punti PDF (72 pt = 1 pollice), origine in alto a sinistra (stesso sistema
-  restituito da `page.search_for()`)
-- L'ordine degli angoli è irrilevante: il rettangolo viene normalizzato.
+- `PAGE` is 1-based (page 1 = first page)
+- `x0,y0,x1,y1` in PDF points (72 pt = 1 inch), origin at the top-left (same coordinate
+  system returned by `page.search_for()`)
+- Corner order doesn't matter: the rectangle is normalized.
 
-### Codici di uscita
+### Exit codes
 
-`0` = completato, `2` = errore di input/utilizzo.
+`0` = success, `2` = input/usage error.
 
-## Limitazioni note
+## Known limitations
 
-- Non vengono trattati i metadati del documento (Autore, Titolo, XMP) né il contenuto di
-  annotazioni/commenti, che non compaiono in `get_text()`.
-- Un termine spezzato su più righe nel layout del PDF potrebbe non essere trovato.
-- I PDF scansionati (solo immagine, senza testo estraibile) richiedono OCR a monte: lo
-  strumento non trova nulla da oscurare in quel caso.
+- Document metadata (Author, Title, XMP) and annotation/comment content are not handled,
+  since they don't appear in `get_text()`.
+- A term split across multiple lines in the PDF layout might not be found.
+- Scanned PDFs (image-only, with no extractable text) require OCR upstream: the tool finds
+  nothing to redact in that case.
 
-Verificare sempre l'output con `pdftotext` e `pdfinfo -meta` prima della distribuzione.
+Always verify the output with `pdftotext` and `pdfinfo -meta` before distribution.
 
-## Compatibilità Windows
+## Windows compatibility
 
-Il progetto è testato in CI su Linux, Windows e macOS (vedi `.github/workflows/tests.yml`) ed
-è compatibile con Windows senza modifiche: usa solo `os.path` (nessun separatore hardcoded),
-nessuna chiamata POSIX-only, e `os.path.samefile` funziona correttamente su Windows dalla
-3.2 di Python. Unica avvertenza: su `cmd.exe` con code page non-UTF8, i messaggi con caratteri
-accentati (es. "è") possono non renderizzare correttamente — si consiglia Windows Terminal/
-PowerShell, oppure impostare `PYTHONUTF8=1`.
+The project is tested in CI on Linux, Windows, and macOS (see `.github/workflows/tests.yml`)
+and is compatible with Windows without modifications: it only uses `os.path` (no hardcoded
+separators), no POSIX-only calls, and `os.path.samefile` has worked correctly on Windows
+since Python 3.2.
 
-## Sviluppo
+## Development
 
 ```sh
 pip install -e .[test]
 pytest
-pytest tests/test_core.py::test_redact_pdf_literal_term   # singolo test
+pytest tests/test_core.py::test_redact_pdf_literal_term   # single test
 ```
 
-## Licenza
+## AI-assisted development
 
-[MPL-2.0](LICENSE). Il repository è conforme a [REUSE](https://reuse.software/); per
-verificare: `pipx run reuse lint`.
+This project's code, tests, and documentation were developed with the assistance of AI
+tools (Claude Code). Every change was reviewed before being published; please report any
+issues you find via the project's issue tracker.
+
+## License
+
+[MPL-2.0](COPYING). The repository is [REUSE](https://reuse.software/) compliant; to verify:
+`pipx run reuse lint`.

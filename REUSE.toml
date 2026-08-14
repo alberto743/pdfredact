@@ -1,9 +1,9 @@
 version = 1
 SPDX-PackageName = "pdfredact"
 SPDX-PackageSupplier = "Alberto P."
-SPDX-PackageDownloadLocation = "NOASSERTION"
+SPDX-PackageDownloadLocation = "https://github.com/alberto743/pdfredact"
 
 [[annotations]]
-path = ["README.md", "CLAUDE.md", ".gitignore", "LICENSE"]
+path = ["README.md", "README.it.md", "CLAUDE.md", ".gitignore", "COPYING"]
 SPDX-FileCopyrightText = "2026 Alberto P."
 SPDX-License-Identifier = "MPL-2.0"

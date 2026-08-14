@@ -9,11 +9,12 @@ visual overlay) using PyMuPDF. It finds text via literal terms, regex patterns, 
 page rectangles, then burns those areas out with `apply_redactions()` so the underlying
 text/pixels are physically removed and not recoverable via copy-paste or text extraction.
 
-All comments, docstrings, help text, and CLI messages are in Italian — keep new user-facing
-strings and comments in Italian for consistency.
+The package (code, CLI messages, docstrings, comments) is entirely in English. `README.it.md` is
+the sole Italian-language file in the repo — a translation of `README.md`, kept in sync with it.
+Keep new user-facing strings and comments in English for consistency.
 
 Licensed MPL-2.0, REUSE-compliant (every source file carries an SPDX header; see "License /
-REUSE" below).
+REUSE" below). Hosted at `https://github.com/alberto743/pdfredact`.
 
 ## Setup
 
@@ -23,18 +24,24 @@ pip install -e .[test]
 
 Requires Python 3.10+ (uses `list[str]`, `set[int]`, `X | None` type hints). Only runtime
 dependency is `pymupdf`, which ships prebuilt wheels for Linux/Windows/macOS — no compiler
-needed anywhere.
+needed anywhere. Build backend is Hatchling (`[build-system]` in `pyproject.toml`); package
+discovery is explicit via `[tool.hatch.build.targets.wheel] packages = ["src/pdfredact"]`.
 
 Also installable with `pipx install .` (see README.md for full pipx/Windows-via-Scoop
 instructions) — this is the intended way for end users to get the `pdfredact` command without
 touching a system Python environment.
+
+`pdfredact.__version__` is resolved dynamically at import time via
+`importlib.metadata.version("pdfredact")` (falls back to `"0.0.0"` if the package isn't
+installed) rather than being hardcoded in `__init__.py` — `pyproject.toml`'s `[project] version`
+is the single source of truth.
 
 ## Running
 
 ```sh
 pdfredact input.pdf output.pdf -t "Mario Rossi" -t "CF: ABCDEF"
 pdfredact input.pdf output.pdf -r "\bMCNP-\d{4}\b"
-pdfredact input.pdf output.pdf -t "Confidenziale" --case-sensitive
+pdfredact input.pdf output.pdf -t "Confidential" --case-sensitive
 pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
 pdfredact input.pdf output.pdf --box "1:56,700,300,730"
 pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
@@ -64,7 +71,7 @@ assumes the package is installed (`pip install -e .[test]`) before running.
 
 - **`core.py`** — all redaction logic, no argparse/CLI concerns. Structured as a pipeline:
   1. **Spec parsing** — `parse_page_ranges()` (`"1,2,5-7"` → 0-based page index set),
-     `parse_box_spec()` (`"PAGINA:x0,y0,x1,y1"` → `(page_index, fitz.Rect)`, normalized so
+     `parse_box_spec()` (`"PAGE:x0,y0,x1,y1"` → `(page_index, fitz.Rect)`, normalized so
      reversed corners still work), `parse_fill_color()` (`"#RRGGBB"` → RGB float tuple). All
      three fail loudly (`fail()` → exit 2) on malformed input rather than silently producing an
      empty/no-op selection, since a silent no-op would mean a PDF that looks redacted but isn't.
@@ -89,8 +96,8 @@ assumes the package is installed (`pip install -e .[test]`) before running.
 - **`__main__.py`** — enables `python -m pdfredact`.
 
 Known limitation callouts (already handled/documented in code, don't "fix" without discussion):
-- Zero-hit runs still write an output file, but print an `ATTENZIONE` warning that it's an
-  unredacted copy — this is intentional so scripted/pipeline usage doesn't silently mask failures.
+- Zero-hit runs still write an output file, but print a `WARNING` that it's an unredacted copy —
+  this is intentional so scripted/pipeline usage doesn't silently mask failures.
 - Encrypted PDFs (`doc.needs_pass`) are rejected with a clear message rather than failing deeper
   in the pipeline with an opaque traceback.
 - Two subtle bugs were fixed when this was packaged (see git history): `fail()`'s
@@ -106,18 +113,18 @@ Verified compatible: only `os.path` is used (no hardcoded separators), no POSIX-
 `os.path.samefile` has worked correctly on Windows since Python 3.2. `.github/workflows/tests.yml`
 runs the full suite on `windows-latest` (and macOS) alongside Linux on every push/PR, and
 `.github/workflows/wheels.yml` builds+tests the wheel via cibuildwheel on `windows-latest` too.
-Only caveat: Italian accented characters (`è`, `à`) in stderr/stdout messages can mis-render on
-legacy `cmd.exe` non-UTF8 code pages — recommend Windows Terminal/PowerShell or `PYTHONUTF8=1`;
-this is a terminal-encoding footnote, not a functional bug, and isn't "fixed" in code.
+All CLI output is plain ASCII English, so there's no `cmd.exe` code-page/encoding footnote to
+worry about (unlike the old Italian, accented-character messages this project used to print).
 
 ## License / REUSE
 
-MPL-2.0. Full license text lives at `LICENSES/MPL-2.0.txt`; the root `LICENSE` is a symlink to
+MPL-2.0. Full license text lives at `LICENSES/MPL-2.0.txt`; the root `COPYING` is a symlink to
 it. Every source file (`.py`, `.toml`, `.yml`) carries a 2-line SPDX header
 (`SPDX-FileCopyrightText: 2026 Alberto P.` / `SPDX-License-Identifier: MPL-2.0`); files that
-can't carry a header comment (`README.md`, this file, `.gitignore`, `LICENSE`) are annotated
-instead via `REUSE.toml`. Check compliance with `pipx run reuse lint` (or `reuse lint` if the
-`reuse` tool is already installed) — there's no dedicated CI job for this, it's a manual check.
+can't carry a header comment (`README.md`, `README.it.md`, this file, `.gitignore`, `COPYING`)
+are annotated instead via `REUSE.toml`. Check compliance with `pipx run reuse lint` (or
+`reuse lint` if the `reuse` tool is already installed) — there's no dedicated CI job for this,
+it's a manual check.
 
 ## CI
 

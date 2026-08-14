@@ -1,8 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Alberto P.
 # SPDX-License-Identifier: MPL-2.0
-"""pdfredact — oscura (redazione vera, non solo visiva) testo in un PDF."""
+"""pdfredact — redact text in a PDF (true redaction, not just a visual overlay)."""
+
+from importlib.metadata import PackageNotFoundError, version
 
 from .core import redact_pdf
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("pdfredact")
+except PackageNotFoundError:  # pragma: no cover - package not installed
+    __version__ = "0.0.0"
+
 __all__ = ["redact_pdf", "__version__"]

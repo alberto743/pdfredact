@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Alberto P.
 # SPDX-License-Identifier: MPL-2.0
 """
-Test end-to-end della CLI, invocata come sottoprocesso (`python -m pdfredact`).
+End-to-end CLI tests, invoked as a subprocess (`python -m pdfredact`).
 
-Presuppongono che il pacchetto sia installato (es. `pip install -e .[test]`),
-così da esercitare esattamente il percorso che userebbe un utente reale.
+Assumes the package is installed (e.g. `pip install -e .[test]`), so it
+exercises exactly the path a real user would use.
 """
 
 from __future__ import annotations
@@ -28,62 +28,62 @@ def test_cli_success_exit_code_and_output(sample_pdf, tmp_path):
     result = run_cli(str(sample_pdf), str(out), "-t", "Mario Rossi")
     assert result.returncode == 0
     assert out.exists()
-    assert "Occorrenze oscurate" in result.stdout
+    assert "Occurrences redacted" in result.stdout
 
 
 def test_cli_missing_input_file(tmp_path):
     out = tmp_path / "out.pdf"
     result = run_cli(str(tmp_path / "nope.pdf"), str(out), "-t", "foo")
     assert result.returncode == 2
-    assert "non trovato" in result.stderr
+    assert "not found" in result.stderr
 
 
 def test_cli_input_equals_output(sample_pdf):
     result = run_cli(str(sample_pdf), str(sample_pdf), "-t", "Mario Rossi")
     assert result.returncode == 2
-    assert "coincidono" in result.stderr
+    assert "same file" in result.stderr
 
 
 def test_cli_missing_output_directory(sample_pdf, tmp_path):
     out = tmp_path / "does-not-exist" / "out.pdf"
     result = run_cli(str(sample_pdf), str(out), "-t", "Mario Rossi")
     assert result.returncode == 2
-    assert "directory di output inesistente" in result.stderr
+    assert "output directory does not exist" in result.stderr
 
 
 def test_cli_empty_text_term(sample_pdf, tmp_path):
     out = tmp_path / "out.pdf"
     result = run_cli(str(sample_pdf), str(out), "-t", "   ")
     assert result.returncode == 2
-    assert "stringa vuota" in result.stderr
+    assert "empty string" in result.stderr
 
 
 def test_cli_no_selectors_given(sample_pdf, tmp_path):
     out = tmp_path / "out.pdf"
     result = run_cli(str(sample_pdf), str(out))
     assert result.returncode == 2
-    assert "specificare almeno un termine" in result.stderr
+    assert "specify at least one term" in result.stderr
 
 
 def test_cli_invalid_regex(sample_pdf, tmp_path):
     out = tmp_path / "out.pdf"
     result = run_cli(str(sample_pdf), str(out), "-r", "(unclosed")
     assert result.returncode == 2
-    assert "regex non valida" in result.stderr
+    assert "invalid regex" in result.stderr
 
 
 def test_cli_encrypted_input_rejected(encrypted_pdf, tmp_path):
     out = tmp_path / "out.pdf"
-    result = run_cli(str(encrypted_pdf), str(out), "-t", "Segreto")
+    result = run_cli(str(encrypted_pdf), str(out), "-t", "Secret")
     assert result.returncode == 2
-    assert "protetto da password" in result.stderr
+    assert "password protected" in result.stderr
 
 
 def test_cli_zero_hits_warns_on_stderr(sample_pdf, tmp_path):
     out = tmp_path / "out.pdf"
-    result = run_cli(str(sample_pdf), str(out), "-t", "stringa-inesistente-xyz")
+    result = run_cli(str(sample_pdf), str(out), "-t", "nonexistent-string-xyz")
     assert result.returncode == 0
-    assert "ATTENZIONE" in result.stderr
+    assert "WARNING" in result.stderr
     assert out.exists()
 
 

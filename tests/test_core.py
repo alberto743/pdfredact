@@ -48,7 +48,7 @@ def test_parse_page_ranges_all_out_of_range_fails():
 def test_parse_page_ranges_partial_out_of_range_warns(capsys):
     result = parse_page_ranges("1,50", 10)
     assert result == {0}
-    assert "fuori range" in capsys.readouterr().err
+    assert "out-of-range" in capsys.readouterr().err
 
 
 # --- parse_box_spec ------------------------------------------------------
@@ -60,7 +60,7 @@ def test_parse_box_spec_valid():
 
 
 def test_parse_box_spec_reversed_corners_normalizes():
-    """Copre il fix del bug normalize(): non deve sollevare AttributeError."""
+    """Covers the normalize() fix: must not raise AttributeError."""
     pno, rect = parse_box_spec("2:100,200,10,20")
     assert pno == 1
     assert (rect.x0, rect.y0, rect.x1, rect.y1) == (10, 20, 100, 200)
@@ -170,42 +170,42 @@ def test_redact_pdf_case_sensitive_blocks_mismatched_case(sample_pdf, tmp_path):
     out = tmp_path / "out.pdf"
     hits = redact_pdf(str(sample_pdf), str(out), ["mario rossi"], [], [], True, None)
     assert hits == 0
-    assert "Mario Rossi" in _extract_text(sample_pdf)  # originale intatto
+    assert "Mario Rossi" in _extract_text(sample_pdf)  # original untouched
 
 
 def test_redact_pdf_pages_restricts_text_search(sample_pdf, tmp_path):
     out = tmp_path / "out.pdf"
-    # "dato sensibile" compare solo in pagina 2; limitando la ricerca a pagina 1 -> 0 hit
-    hits = redact_pdf(str(sample_pdf), str(out), ["dato sensibile"], [], [], False, "1")
+    # "sensitive data" only appears on page 2; restricting the search to page 1 -> 0 hits
+    hits = redact_pdf(str(sample_pdf), str(out), ["sensitive data"], [], [], False, "1")
     assert hits == 0
-    assert "dato sensibile" in _extract_text(out, page_index=1)
+    assert "sensitive data" in _extract_text(out, page_index=1)
 
 
 def test_redact_pdf_box_applies_regardless_of_pages_filter(sample_pdf, tmp_path):
     doc = fitz.open(str(sample_pdf))
     try:
-        rect = doc[1].search_for("Pagina due")[0]
+        rect = doc[1].search_for("Page two")[0]
     finally:
         doc.close()
     out = tmp_path / "out.pdf"
-    # --pages limita la ricerca testuale a pagina 1, ma il --box su pagina 2 si applica comunque
+    # --pages restricts text search to page 1, but --box on page 2 still applies
     hits = redact_pdf(str(sample_pdf), str(out), [], [], [(1, rect)], False, "1")
     assert hits == 1
-    assert "Pagina due" not in _extract_text(out, page_index=1)
+    assert "Page two" not in _extract_text(out, page_index=1)
 
 
 def test_redact_pdf_zero_hits_still_writes_output(sample_pdf, tmp_path):
     out = tmp_path / "out.pdf"
-    hits = redact_pdf(str(sample_pdf), str(out), ["stringa-inesistente-xyz"], [], [], False, None)
+    hits = redact_pdf(str(sample_pdf), str(out), ["nonexistent-string-xyz"], [], [], False, None)
     assert hits == 0
     assert out.exists()
-    assert "Mario Rossi" in _extract_text(out)  # copia non redatta
+    assert "Mario Rossi" in _extract_text(out)  # unredacted copy
 
 
 def test_redact_pdf_encrypted_input_rejected(encrypted_pdf, tmp_path):
     out = tmp_path / "out.pdf"
     with pytest.raises(SystemExit) as exc_info:
-        redact_pdf(str(encrypted_pdf), str(out), ["Segreto"], [], [], False, None)
+        redact_pdf(str(encrypted_pdf), str(out), ["Secret"], [], [], False, None)
     assert exc_info.value.code == 2
 
 
@@ -230,3 +230,12 @@ def test_redact_pdf_custom_fill_color_applied(sample_pdf, tmp_path):
     cx, cy = pix.width // 2, pix.height // 2
     r, g, b = pix.pixel(cx, cy)[:3]
     assert r > 200 and g < 50 and b < 50
+
+
+# --- package version ---------------------------------------------------
+
+def test_version_is_not_hardcoded_placeholder():
+    """__version__ is resolved dynamically via importlib.metadata, not a literal."""
+    import pdfredact
+
+    assert re.match(r"^\d+\.\d+\.\d+", pdfredact.__version__)
