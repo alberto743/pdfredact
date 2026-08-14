@@ -16,7 +16,7 @@ authors = [
     { name = "Alberto P." },
 ]
 dependencies = [
-    "pymupdf>=1.24",
+    "pymupdf>=1.28.2",
 ]
 classifiers = [
     "Environment :: Console",
