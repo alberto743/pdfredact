@@ -118,8 +118,9 @@ worry about (unlike the old Italian, accented-character messages this project us
 
 ## License / REUSE
 
-MPL-2.0. Full license text lives at `LICENSES/MPL-2.0.txt`; the root `COPYING` is a symlink to
-it. Every source file (`.py`, `.toml`, `.yml`) carries a 2-line SPDX header
+MPL-2.0. Full license text lives at `LICENSES/MPL-2.0.txt`; the root `COPYING` is a plain copy of
+it (not a symlink, for portability with tools/archives that don't preserve symlinks). Every
+source file (`.py`, `.toml`, `.yml`) carries a 2-line SPDX header
 (`SPDX-FileCopyrightText: 2026 Alberto P.` / `SPDX-License-Identifier: MPL-2.0`); files that
 can't carry a header comment (`README.md`, `README.it.md`, this file, `.gitignore`, `COPYING`)
 are annotated instead via `REUSE.toml`. Check compliance with `pipx run reuse lint` (or
