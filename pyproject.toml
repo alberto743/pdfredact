@@ -43,13 +43,3 @@ test = ["pytest>=8"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pdfredact"]
-
-[tool.cibuildwheel]
-# Pure-Python package: cibuildwheel builds a single py3-none-any wheel and reuses
-# it for every requested identifier, but still runs test-command for each one —
-# here that validates install+test on Linux/Windows for every supported Python
-# version, not to produce per-ABI wheels.
-build = "cp310-* cp311-* cp312-* cp313-*"
-test-requires = "pytest"
-test-sources = ["tests"]
-test-command = "pytest tests"

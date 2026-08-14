@@ -130,11 +130,15 @@ it's a manual check.
 
 - `.github/workflows/tests.yml` — pytest on the `os × python-version` matrix
   (ubuntu/windows/macos × 3.10–3.13) on every push and PR.
-- `.github/workflows/wheels.yml` — builds the wheel with `pypa/cibuildwheel` on
-  ubuntu-latest/windows-latest. The package is pure Python (single `py3-none-any` wheel), so
-  cibuildwheel's main value here is running `pytest` against the *installed wheel* across the
-  Python-version matrix on both OSes (`[tool.cibuildwheel]` in `pyproject.toml` — `test-sources`
-  + `test-command`), not producing per-ABI binaries.
+- `.github/workflows/wheels.yml` — builds the wheel once (`build` job, `python -m build --wheel`)
+  then, in a separate `test` job, downloads that artifact and runs `pytest` against the
+  *installed wheel* across the OS × Python-version matrix (ubuntu-latest/windows-latest ×
+  3.10–3.13) — this catches packaging bugs (e.g. a file missing from the wheel) that an editable
+  install in `tests.yml` wouldn't. Deliberately does **not** use `pypa/cibuildwheel`: that tool
+  is for producing platform-specific (compiled-extension) wheels and, as of newer releases,
+  actively refuses to build a pure-Python wheel like this package's (see
+  [pypa/cibuildwheel#255](https://github.com/pypa/cibuildwheel/issues/255)) — don't reintroduce
+  it here without a real compiled-extension use case.
 - `.github/workflows/pypi.yml` — on any `v*` tag push, builds the sdist+wheel (`build` job) then
   publishes them to PyPI (`publish` job) via `pypa/gh-action-pypi-publish` using Trusted
   Publishing (OIDC, `id-token: write`, no stored API token). The `publish` job runs under the
