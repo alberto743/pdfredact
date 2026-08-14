@@ -7,7 +7,7 @@ from importlib.metadata import PackageNotFoundError, version
 from .core import redact_pdf
 
 try:
-    __version__ = version("pdfredact")
+    __version__ = version("pdfredactcli")
 except PackageNotFoundError:  # pragma: no cover - package not installed
     __version__ = "0.0.0"
 

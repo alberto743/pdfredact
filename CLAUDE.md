@@ -135,4 +135,13 @@ it's a manual check.
   cibuildwheel's main value here is running `pytest` against the *installed wheel* across the
   Python-version matrix on both OSes (`[tool.cibuildwheel]` in `pyproject.toml` — `test-sources`
   + `test-command`), not producing per-ABI binaries.
+- `.github/workflows/pypi.yml` — on any `v*` tag push, builds the sdist+wheel (`build` job) then
+  publishes them to PyPI (`publish` job) via `pypa/gh-action-pypi-publish` using Trusted
+  Publishing (OIDC, `id-token: write`, no stored API token). The `publish` job runs under the
+  GitHub Environment named `pypi`, which must be created in the repo settings and registered as
+  a trusted publisher on the PyPI project page — this is manual, one-time setup outside the repo,
+  not something the workflow file itself can do. PyPI project name is `pdfredactcli` (distinct
+  from the importable package/console-script name `pdfredact`) — `pyproject.toml`'s `[project]
+  name` and `__init__.py`'s `importlib.metadata.version("pdfredactcli")` lookup must stay in sync
+  with this if either ever changes.
 - `.github/dependabot.yml` — weekly updates for the `pip` and `github-actions` ecosystems.
