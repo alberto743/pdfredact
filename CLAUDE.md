@@ -128,9 +128,13 @@ assumes the package is installed (`pip install -e .[test]`) before running.
   `pages`/`fill_color`) take the CLI value if it was explicitly passed, else the config's value,
   else the hardcoded default. Detecting "explicitly passed" requires the CLI's own defaults for
   those scalar flags to be `None` instead of a real value (`--fill-color` used to default to
-  `"#000000"` directly; `--case-sensitive`'s `store_true` used to default to `False`) — otherwise
-  a config value could never be told apart from "user didn't pass this flag" and the merge
-  couldn't apply config-only fallback correctly. Validates input/output paths up front (input
+  `"#000000"` directly; `--case-sensitive` used to be `store_true`, defaulting to `False`) —
+  otherwise a config value could never be told apart from "user didn't pass this flag" and the
+  merge couldn't apply config-only fallback correctly. `--case-sensitive` is now
+  `argparse.BooleanOptionalAction` (default `None`), which also generates a `--no-case-sensitive`
+  counterpart — without it, a config file's `case_sensitive: true` could never be overridden back
+  to `false` from the command line, since plain `store_true` has no way to produce an explicit
+  `False`. Validates input/output paths up front (input
   exists, output dir exists, input != output to avoid destroying the original in-place) before
   calling into `core.redact_pdf()`. This is the `pdfredact` console-script entry point
   (`[project.scripts]` in `pyproject.toml`).

@@ -52,8 +52,10 @@ def main() -> None:
     ap.add_argument("--box", action="append", default=[], dest="boxes",
                     metavar="PAGE:x0,y0,x1,y1",
                     help="Explicit rectangle to redact, e.g. '1:56,700,300,730' (repeatable)")
-    ap.add_argument("--case-sensitive", action="store_true", default=None,
-                    help="Case-sensitive search (default: case-insensitive)")
+    ap.add_argument("--case-sensitive", action=argparse.BooleanOptionalAction, default=None,
+                    help="Case-sensitive search (default: case-insensitive). Use "
+                         "--no-case-sensitive to override a config file's "
+                         "'case_sensitive: true' back to false")
     ap.add_argument("--pages", dest="pages", default=None,
                     help="Pages for text search (-t/-r), e.g. '1,2,5-7' "
                          "(default: all; does not affect --box)")

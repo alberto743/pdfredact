@@ -10,8 +10,9 @@ testo).
 
 ## Installazione
 
-Richiede Python 3.10 o superiore. L'unica dipendenza è PyMuPDF, che pubblica wheel
-precompilati per Linux, Windows e macOS (nessun compilatore richiesto).
+Richiede Python 3.10 o superiore. Le dipendenze sono PyMuPDF e PyYAML (per `--config`),
+entrambe pubblicano wheel precompilati per Linux, Windows e macOS (nessun compilatore
+richiesto).
 
 Il pacchetto è pubblicato su PyPI come [`pdfredactcli`](https://pypi.org/project/pdfredactcli/)
 (il comando installato è `pdfredact`).
@@ -142,7 +143,9 @@ comando vengono uniti:
 - `text`, `regex` e `boxes` dalla riga di comando vengono **aggiunti** alle liste del file di
   configurazione.
 - `input`, `output`, `pages`, `fill_color` e `case-sensitive` dalla riga di comando **sovrascrivono**
-  il valore del file di configurazione quando specificati esplicitamente.
+  il valore del file di configurazione quando specificati esplicitamente. Per riportare a `false`
+  un `case_sensitive: true` impostato nel file di configurazione, usare `--no-case-sensitive`
+  (il semplice `--case-sensitive` può solo impostarlo a `true`).
 
 Ogni chiave viene validata come il corrispondente parametro CLI (stessi formati di
 `--box`/`--pages`/`--fill-color`); una chiave sconosciuta o un valore di tipo/formato errato

@@ -9,8 +9,8 @@ underlying text (not recoverable via copy-paste or text extraction).
 
 ## Installation
 
-Requires Python 3.10 or later. The only dependency is PyMuPDF, which publishes prebuilt wheels
-for Linux, Windows, and macOS (no compiler required).
+Requires Python 3.10 or later. Dependencies are PyMuPDF and PyYAML (for `--config`), both of
+which publish prebuilt wheels for Linux, Windows, and macOS (no compiler required).
 
 The package is published on PyPI as [`pdfredactcli`](https://pypi.org/project/pdfredactcli/)
 (the installed command is `pdfredact`).
@@ -138,7 +138,9 @@ is set in the file. Values from the config file and the command line are merged:
 
 - `text`, `regex`, and `boxes` from the command line are **added** to the config file's lists.
 - `input`, `output`, `pages`, `fill_color`, and `case-sensitive` from the command line
-  **override** the config file's value when explicitly passed.
+  **override** the config file's value when explicitly passed. To override a config file's
+  `case_sensitive: true` back to `false`, pass `--no-case-sensitive` (plain `--case-sensitive`
+  can only set it to `true`).
 
 Each key is validated the same way as its CLI equivalent (same `--box`/`--pages`/`--fill-color`
 formats); an unknown key or a value of the wrong type/shape fails immediately with exit code 2

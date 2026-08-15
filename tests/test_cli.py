@@ -183,6 +183,24 @@ def test_cli_pages_cli_overrides_config(sample_pdf, tmp_path):
     assert "Occurrences redacted (unique rectangles): 2" in result.stdout
 
 
+def test_cli_no_case_sensitive_overrides_config_true(sample_pdf, tmp_path):
+    """--no-case-sensitive must be able to force case_sensitive back to false
+    even when the config file sets case_sensitive: true, since store_true
+    alone could never produce an explicit False to override it with."""
+    out = tmp_path / "out.pdf"
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "text:\n"
+        "  - mario rossi\n"  # wrong case: only matches if case-insensitive
+        "case_sensitive: true\n"
+    )
+    result = run_cli(
+        str(sample_pdf), str(out), "--config", str(config_path), "--no-case-sensitive",
+    )
+    assert result.returncode == 0
+    assert "Occurrences redacted (unique rectangles): 2" in result.stdout
+
+
 def test_cli_output_positional_overrides_config_output(sample_pdf, tmp_path):
     cli_out = tmp_path / "cli_out.pdf"
     config_out = tmp_path / "config_out.pdf"
