@@ -55,6 +55,7 @@ pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
 pdfredact input.pdf -t "Mario Rossi"              # writes input_redacted.pdf
 pdfredact --config job.yaml
 pdfredact input.pdf output.pdf --config rules.yaml -t "extra one-off term"
+pdfredact --version
 ```
 
 `output` is an optional positional argument; when omitted it defaults to
@@ -102,7 +103,11 @@ assumes the package is installed (`pip install -e .[test]`) before running.
      outside the known set (`input`, `output`, `text`, `regex`, `boxes`, `case_sensitive`,
      `pages`, `fill_color`), and any value of the wrong type (e.g. `text: "foo"` instead of
      `text: ["foo"]`) — no silent coercion, since a lazily-typed config key could otherwise mean
-     an option is quietly dropped instead of applied. `DEFAULT_FILL_COLOR = "#000000"` is a
+     an option is quietly dropped instead of applied. Note the `UnicodeDecodeError` clause in
+     `load_config()`'s `except` chain: a non-UTF-8 config file raises it from inside
+     `yaml.safe_load()`, and it's a `ValueError` — neither an `OSError` nor a `yaml.YAMLError` —
+     so without it the file escaped as a traceback with exit 1 instead of a clean exit 2.
+     `DEFAULT_FILL_COLOR = "#000000"` is a
      shared constant so `cli.py`'s help text and its config-merge fallback can't drift apart.
   2. **Match finding** — `find_rects_for_pattern()` runs a compiled regex against
      `page.get_text()`, deduplicates the matched strings, then uses `page.search_for()` to get
@@ -128,7 +133,11 @@ assumes the package is installed (`pip install -e .[test]`) before running.
   (`nargs="?"`); when `output` is omitted it's derived from `input` right after the input-exists
   check (`os.path.splitext(input_path)` → `<stem>_redacted.pdf`), so the existing
   samefile/output-dir validation still runs against the derived path uniformly, with no
-  special-casing. When `--config FILE.yaml` is given, `core.load_config()` loads it into a dict
+  special-casing. `prog="pdfredact"` is set explicitly on the parser so usage and `--version`
+  output read `pdfredact` under `python -m pdfredact` too, where argparse would otherwise derive
+  `__main__.py` from `sys.argv[0]`; `-V/--version` is an `action="version"` flag fed from
+  `pdfredact.__version__`, so it resolves through `importlib.metadata` and needs no input file.
+  When `--config FILE.yaml` is given, `core.load_config()` loads it into a dict
   and `main()` merges it with the parsed CLI args: list options (`terms`/`regexes`/`box_specs`)
   are the CLI list **plus** the config's list; scalar options (`input`/`output`/`case_sensitive`/
   `pages`/`fill_color`) take the CLI value if it was explicitly passed, else the config's value,
@@ -150,7 +159,12 @@ Known limitation callouts (already handled/documented in code, don't "fix" witho
 - Zero-hit runs still write an output file, but print a `WARNING` that it's an unredacted copy —
   this is intentional so scripted/pipeline usage doesn't silently mask failures.
 - Encrypted PDFs (`doc.needs_pass`) are rejected with a clear message rather than failing deeper
-  in the pipeline with an opaque traceback.
+  in the pipeline with an opaque traceback. The `not doc.is_pdf` check right before it exists
+  for the same reason and must stay ahead of it in `redact_pdf()`: `fitz.open()` also accepts
+  TXT/EPUB/SVG/CBZ/image files and converts them into a document, but redaction annotations are
+  PDF-only, so such an input used to die with `ValueError: is no PDF` (exit 1) when something
+  matched and — worse — to exit 0 announcing a saved file when nothing did. Encrypted PDFs still
+  report "password protected" because `is_pdf` is `True` for them.
 - Two subtle bugs were fixed when this was packaged (see git history): `fail()`'s
   `NoReturn` annotation was previously an unimported forward-reference string, and
   `parse_box_spec()` used to reassign `rect = fitz.Rect(...).normalize()`, which would silently

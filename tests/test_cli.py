@@ -9,6 +9,7 @@ exercises exactly the path a real user would use.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 
@@ -37,6 +38,15 @@ def test_cli_default_output_name(sample_pdf):
     assert result.returncode == 0
     assert expected_out.exists()
     assert str(expected_out) in result.stdout
+
+
+def test_cli_version_flag():
+    """--version reports pdfredact.__version__ and exits 0 without needing an
+    input file. 'pdfredact' (not '__main__.py') is the expected prog name even
+    under 'python -m', which is why the parser sets prog explicitly."""
+    result = run_cli("--version")
+    assert result.returncode == 0
+    assert re.match(r"^pdfredact \d+\.\d+\.\d+", result.stdout.strip())
 
 
 def test_cli_missing_input_file(tmp_path):
@@ -85,6 +95,21 @@ def test_cli_invalid_regex(sample_pdf, tmp_path):
     result = run_cli(str(sample_pdf), str(out), "-r", "(unclosed")
     assert result.returncode == 2
     assert "invalid regex" in result.stderr
+
+
+@pytest.mark.parametrize("term", ["Mario Rossi", "nonexistent-string-xyz"])
+def test_cli_non_pdf_input_rejected(tmp_path, term):
+    """A .txt input used to abort with a 'ValueError: is no PDF' traceback and
+    exit 1 when the term matched, and to exit 0 announcing a saved file when it
+    didn't. Neither is acceptable for a non-PDF input."""
+    src = tmp_path / "doc.txt"
+    src.write_text("Name: Mario Rossi\n")
+    out = tmp_path / "out.pdf"
+    result = run_cli(str(src), str(out), "-t", term)
+    assert result.returncode == 2
+    assert "is not a PDF" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not out.exists()
 
 
 def test_cli_encrypted_input_rejected(encrypted_pdf, tmp_path):
@@ -248,6 +273,18 @@ def test_cli_config_wrong_type_fails(sample_pdf, tmp_path):
     result = run_cli(str(sample_pdf), str(out), "--config", str(config_path))
     assert result.returncode == 2
     assert "'text'" in result.stderr
+
+
+def test_cli_config_non_utf8_fails(sample_pdf, tmp_path):
+    """UnicodeDecodeError is a ValueError, not an OSError or a YAMLError, so it
+    used to escape load_config()'s handlers as a traceback with exit code 1."""
+    out = tmp_path / "out.pdf"
+    config_path = tmp_path / "config.yaml"
+    config_path.write_bytes(b"text:\n  - \xff\xfe Mario\n")
+    result = run_cli(str(sample_pdf), str(out), "--config", str(config_path))
+    assert result.returncode == 2
+    assert "not valid UTF-8" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def test_cli_config_no_input_anywhere_fails(tmp_path):

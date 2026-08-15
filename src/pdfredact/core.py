@@ -176,6 +176,11 @@ def load_config(path: str) -> dict:
         fail(f"config file not found: '{path}'")
     except yaml.YAMLError as exc:
         fail(f"invalid YAML in '{path}': {exc}")
+    # A non-UTF-8 file raises UnicodeDecodeError from inside safe_load(); it is a
+    # ValueError, not an OSError or a YAMLError, so without this clause it would
+    # escape as an opaque traceback with exit code 1 instead of a clean exit 2.
+    except UnicodeDecodeError as exc:
+        fail(f"config file '{path}' is not valid UTF-8: {exc}")
     except OSError as exc:
         fail(f"could not read config file '{path}': {exc}")
 
@@ -283,6 +288,14 @@ def redact_pdf(
         fail(f"could not open '{input_path}': {exc}")
 
     try:
+        # fitz.open() also accepts TXT, EPUB, SVG, CBZ, MOBI and image files,
+        # converting them into a document. Redaction annotations are PDF-only,
+        # so without this check such an input either dies with an opaque
+        # 'ValueError: is no PDF' traceback (exit 1) when something matches, or
+        # - worse - reports success and writes a converted PDF when nothing does.
+        if not doc.is_pdf:
+            fail(f"'{input_path}' is not a PDF (PyMuPDF opened it as another "
+                 f"document type, e.g. TXT/EPUB/SVG/image): convert it first")
         # An encrypted PDF opens but its pages aren't accessible: without
         # this check the failure would surface later as an opaque traceback.
         if doc.needs_pass:

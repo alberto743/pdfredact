@@ -89,6 +89,7 @@ pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
 pdfredact input.pdf -t "Mario Rossi"              # scrive input_redacted.pdf
 pdfredact --config lavoro.yaml
 pdfredact input.pdf output.pdf --config regole.yaml -t "termine extra"
+pdfredact --version
 ```
 
 Il percorso di output è opzionale: se omesso, viene usato di default
@@ -157,6 +158,9 @@ termina immediatamente con codice di uscita 2 invece di essere ignorato silenzio
 
 ## Limitazioni note
 
+- È accettato solo input PDF. PyMuPDF apre anche file TXT, EPUB, SVG, CBZ e immagini, ma le
+  annotazioni di redazione esistono solo nei PDF: questi input vengono rifiutati con codice di
+  uscita 2, occorre prima convertirli in PDF.
 - Non vengono trattati i metadati del documento (Autore, Titolo, XMP) né il contenuto di
   annotazioni/commenti, che non compaiono in `get_text()`.
 - Un termine spezzato su più righe nel layout del PDF potrebbe non essere trovato.

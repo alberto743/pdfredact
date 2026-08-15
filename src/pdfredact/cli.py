@@ -13,6 +13,7 @@ Usage:
     pdfredact input.pdf -t "Mario Rossi"   # writes input_redacted.pdf
     pdfredact --config job.yaml
     pdfredact input.pdf output.pdf --config rules.yaml -t "extra one-off term"
+    pdfredact --version
 
 Box coordinates (--box):
     Format: "PAGE:x0,y0,x1,y1"
@@ -31,13 +32,19 @@ import argparse
 import os
 import sys
 
+from . import __version__
 from .core import (
     DEFAULT_FILL_COLOR, fail, load_config, parse_box_spec, parse_fill_color, redact_pdf,
 )
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Redact specific text in a PDF using PyMuPDF.")
+    # prog is set explicitly so that usage/--version output reads 'pdfredact'
+    # both for the console script and for 'python -m pdfredact' (where argparse
+    # would otherwise derive '__main__.py' from sys.argv[0]).
+    ap = argparse.ArgumentParser(
+        prog="pdfredact", description="Redact specific text in a PDF using PyMuPDF.",
+    )
     ap.add_argument("input", nargs="?", default=None,
                     help="Input PDF (optional if 'input:' is set in --config)")
     ap.add_argument("output", nargs="?", default=None,
@@ -62,6 +69,8 @@ def main() -> None:
     ap.add_argument("--fill-color", dest="fill_color", default=None,
                     metavar="#RRGGBB",
                     help=f"Fill color for redacted areas (default: '{DEFAULT_FILL_COLOR}')")
+    ap.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}",
+                    help="Show the installed version and exit")
     args = ap.parse_args()
 
     config = load_config(args.config) if args.config else {}

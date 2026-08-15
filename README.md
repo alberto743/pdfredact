@@ -87,6 +87,7 @@ pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
 pdfredact input.pdf -t "Mario Rossi"              # writes input_redacted.pdf
 pdfredact --config job.yaml
 pdfredact input.pdf output.pdf --config rules.yaml -t "extra one-off term"
+pdfredact --version
 ```
 
 The output path is optional: if omitted, it defaults to `<input>_redacted.pdf` next to the
@@ -152,6 +153,9 @@ rather than being silently ignored.
 
 ## Known limitations
 
+- Only PDF input is accepted. PyMuPDF can also open TXT, EPUB, SVG, CBZ and image files, but
+  redaction annotations are PDF-only, so those inputs are rejected with exit code 2; convert
+  them to PDF first.
 - Document metadata (Author, Title, XMP) and annotation/comment content are not handled,
   since they don't appear in `get_text()`.
 - A term split across multiple lines in the PDF layout might not be found.

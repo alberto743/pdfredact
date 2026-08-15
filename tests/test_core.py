@@ -231,6 +231,17 @@ def test_load_config_wrong_type_fails(tmp_path, key, bad_value):
     assert exc_info.value.code == 2
 
 
+def test_load_config_non_utf8_fails(tmp_path):
+    """A non-UTF-8 file raises UnicodeDecodeError inside yaml.safe_load(). It is
+    a ValueError, so it used to escape every handler and abort with a traceback
+    and exit code 1 instead of the documented exit 2."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_bytes(b"text:\n  - \xff\xfe Mario\n")
+    with pytest.raises(SystemExit) as exc_info:
+        load_config(str(config_path))
+    assert exc_info.value.code == 2
+
+
 def test_load_config_list_of_non_strings_fails(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text("text:\n  - 1\n  - 2\n")
@@ -412,6 +423,21 @@ def test_redact_pdf_empty_pages_spec_fails_loudly(sample_pdf, tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         redact_pdf(str(sample_pdf), str(out), ["Mario Rossi"], [], [], False, "")
     assert exc_info.value.code == 2
+
+
+@pytest.mark.parametrize("terms", [["Mario Rossi"], ["nonexistent-string-xyz"]])
+def test_redact_pdf_non_pdf_input_rejected(tmp_path, terms):
+    """fitz.open() also opens TXT/EPUB/SVG/images. Redaction annotations are
+    PDF-only, so such an input used to die with 'ValueError: is no PDF' (exit 1)
+    when something matched and - worse - to report success while writing a
+    converted PDF when nothing did. Both paths must fail with exit 2."""
+    src = tmp_path / "doc.txt"
+    src.write_text("Name: Mario Rossi\n")
+    out = tmp_path / "out.pdf"
+    with pytest.raises(SystemExit) as exc_info:
+        redact_pdf(str(src), str(out), terms, [], [], False, None)
+    assert exc_info.value.code == 2
+    assert not out.exists()
 
 
 def test_redact_pdf_encrypted_input_rejected(encrypted_pdf, tmp_path):
