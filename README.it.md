@@ -10,7 +10,7 @@ testo).
 
 ## Installazione
 
-Richiede Python 3.10 o superiore. Le dipendenze sono PyMuPDF e PyYAML (per `--config`),
+Richiede Python 3.9 o superiore. Le dipendenze sono PyMuPDF e PyYAML (per `--config`),
 entrambe pubblicano wheel precompilati per Linux, Windows e macOS (nessun compilatore
 richiesto).
 

@@ -22,10 +22,16 @@ REUSE" below). Hosted at `https://github.com/alberto743/pdfredact`.
 pip install -e .[test]
 ```
 
-Requires Python 3.10+ (uses `list[str]`, `set[int]`, `X | None` type hints). Runtime
+Requires Python 3.9+. `core.py`/`cli.py` use `list[str]`, `set[int]`, `X | None`-style hints
+freely, but every file that does starts with `from __future__ import annotations` (PEP 563), so
+those annotations are never evaluated at runtime and don't force a 3.10 floor — the runtime code
+itself (walrus operator, f-strings, plain-builtin `isinstance()` checks,
+`argparse.BooleanOptionalAction`, added in 3.9) is 3.9-safe, which is why `requires-python` is
+`>=3.9` rather than `>=3.10`. Don't add real 3.10+-only runtime syntax (`match`/`case`, `X | Y`
+outside an annotation, `zip(strict=)`, `except*`) without bumping this back up. Runtime
 dependencies are `pymupdf` and `pyyaml` (for `--config`), both of which ship prebuilt wheels for
-Linux/Windows/macOS — no compiler needed anywhere. Build backend is Hatchling (`[build-system]`
-in `pyproject.toml`); package discovery is explicit via
+Linux/Windows/macOS — no compiler needed anywhere — including for Python 3.9. Build backend is
+Hatchling (`[build-system]` in `pyproject.toml`); package discovery is explicit via
 `[tool.hatch.build.targets.wheel] packages = ["src/pdfredact"]`.
 
 Also installable with `pipx install .` (see README.md for full pipx/Windows-via-Scoop
@@ -175,11 +181,11 @@ it's a manual check.
 ## CI
 
 - `.github/workflows/tests.yml` — pytest on the `os × python-version` matrix
-  (ubuntu/windows/macos × 3.10–3.13) on every push and PR.
+  (ubuntu/windows/macos × 3.9–3.13) on every push and PR.
 - `.github/workflows/wheels.yml` — builds the wheel once (`build` job, `python -m build --wheel`)
   then, in a separate `test` job, downloads that artifact and runs `pytest` against the
   *installed wheel* across the OS × Python-version matrix (ubuntu-latest/windows-latest ×
-  3.10–3.13) — this catches packaging bugs (e.g. a file missing from the wheel) that an editable
+  3.9–3.13) — this catches packaging bugs (e.g. a file missing from the wheel) that an editable
   install in `tests.yml` wouldn't. Deliberately does **not** use `pypa/cibuildwheel`: that tool
   is for producing platform-specific (compiled-extension) wheels and, as of newer releases,
   actively refuses to build a pure-Python wheel like this package's (see
