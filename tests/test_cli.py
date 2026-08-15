@@ -31,6 +31,14 @@ def test_cli_success_exit_code_and_output(sample_pdf, tmp_path):
     assert "Occurrences redacted" in result.stdout
 
 
+def test_cli_default_output_name(sample_pdf):
+    result = run_cli(str(sample_pdf), "-t", "Mario Rossi")
+    expected_out = sample_pdf.with_name(sample_pdf.stem + "_redacted.pdf")
+    assert result.returncode == 0
+    assert expected_out.exists()
+    assert str(expected_out) in result.stdout
+
+
 def test_cli_missing_input_file(tmp_path):
     out = tmp_path / "out.pdf"
     result = run_cli(str(tmp_path / "nope.pdf"), str(out), "-t", "foo")

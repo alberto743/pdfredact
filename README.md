@@ -84,7 +84,11 @@ pdfredact input.pdf output.pdf -t "Confidential" --case-sensitive
 pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
 pdfredact input.pdf output.pdf --box "1:56,700,300,730"
 pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
+pdfredact input.pdf -t "Mario Rossi"              # writes input_redacted.pdf
 ```
+
+The output path is optional: if omitted, it defaults to `<input>_redacted.pdf` next to the
+input file.
 
 Equivalent without installing, from the root of the repository:
 

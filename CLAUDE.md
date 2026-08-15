@@ -45,7 +45,11 @@ pdfredact input.pdf output.pdf -t "Confidential" --case-sensitive
 pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
 pdfredact input.pdf output.pdf --box "1:56,700,300,730"
 pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
+pdfredact input.pdf -t "Mario Rossi"              # writes input_redacted.pdf
 ```
+
+`output` is an optional positional argument; when omitted it defaults to
+`<input-stem>_redacted.pdf` in the input's own directory.
 
 Or without installing: `python -m pdfredact ...` from the repo root.
 
@@ -104,10 +108,13 @@ assumes the package is installed (`pip install -e .[test]`) before running.
      *not* touch document metadata (Author, Title, XMP) or annotation/comment content, since
      those don't appear in `get_text()`. `cli.py` prints an explicit warning about this scope
      limitation.
-- **`cli.py`** — argparse setup and `main()`. Validates input/output paths up front (input
-  exists, output dir exists, input != output to avoid destroying the original in-place) before
-  calling into `core.redact_pdf()`. This is the `pdfredact` console-script entry point
-  (`[project.scripts]` in `pyproject.toml`).
+- **`cli.py`** — argparse setup and `main()`. `output` is an optional positional
+  (`nargs="?"`); when omitted it's derived from `input` right after the input-exists check
+  (`os.path.splitext(args.input)` → `<stem>_redacted.pdf`), so the existing samefile/output-dir
+  validation still runs against the derived path uniformly, with no special-casing. Validates
+  input/output paths up front (input exists, output dir exists, input != output to avoid
+  destroying the original in-place) before calling into `core.redact_pdf()`. This is the
+  `pdfredact` console-script entry point (`[project.scripts]` in `pyproject.toml`).
 - **`__main__.py`** — enables `python -m pdfredact`.
 
 Known limitation callouts (already handled/documented in code, don't "fix" without discussion):

@@ -10,6 +10,7 @@ Usage:
     pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
     pdfredact input.pdf output.pdf --box "1:56,700,300,730"
     pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
+    pdfredact input.pdf -t "Mario Rossi"   # writes input_redacted.pdf
 
 Box coordinates (--box):
     Format: "PAGE:x0,y0,x1,y1"
@@ -34,7 +35,8 @@ from .core import fail, parse_box_spec, parse_fill_color, redact_pdf
 def main() -> None:
     ap = argparse.ArgumentParser(description="Redact specific text in a PDF using PyMuPDF.")
     ap.add_argument("input", help="Input PDF")
-    ap.add_argument("output", help="Output (redacted) PDF")
+    ap.add_argument("output", nargs="?", default=None,
+                    help="Output (redacted) PDF (default: '<input>_redacted.pdf')")
     ap.add_argument("-t", "--text", action="append", default=[], dest="terms",
                     help="Literal text to redact (repeatable)")
     ap.add_argument("-r", "--regex", action="append", default=[], dest="regexes",
@@ -59,6 +61,9 @@ def main() -> None:
     # Validate input/output before any processing
     if not os.path.isfile(args.input):
         fail(f"input file not found: '{args.input}'")
+    if args.output is None:
+        root, _ext = os.path.splitext(args.input)
+        args.output = f"{root}_redacted.pdf"
     if os.path.exists(args.output) and os.path.samefile(args.input, args.output):
         fail("input and output are the same file: in-place redaction would "
              "destroy the original - specify a different output file")
