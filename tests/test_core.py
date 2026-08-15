@@ -14,6 +14,7 @@ except ImportError:
 from pdfredact.core import (
     dedupe_rects,
     find_rects_for_pattern,
+    load_config,
     parse_box_spec,
     parse_fill_color,
     parse_page_ranges,
@@ -143,6 +144,98 @@ def test_parse_fill_color_rejects_lenient_int_forms(spec):
     crashes PyMuPDF with an opaque TypeError inside add_redact_annot)."""
     with pytest.raises(SystemExit) as exc_info:
         parse_fill_color(spec)
+    assert exc_info.value.code == 2
+
+
+# --- load_config -------------------------------------------------------
+
+def test_load_config_valid_roundtrip(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "input: in.pdf\n"
+        "output: out.pdf\n"
+        "text:\n"
+        "  - Mario Rossi\n"
+        "regex:\n"
+        "  - '\\bMCNP-\\d{4}\\b'\n"
+        "boxes:\n"
+        "  - '1:56,700,300,730'\n"
+        "case_sensitive: true\n"
+        "pages: '1,2,5-7'\n"
+        "fill_color: '#ff0000'\n"
+    )
+    config = load_config(str(config_path))
+    assert config == {
+        "input": "in.pdf",
+        "output": "out.pdf",
+        "text": ["Mario Rossi"],
+        "regex": ["\\bMCNP-\\d{4}\\b"],
+        "boxes": ["1:56,700,300,730"],
+        "case_sensitive": True,
+        "pages": "1,2,5-7",
+        "fill_color": "#ff0000",
+    }
+
+
+def test_load_config_missing_file_fails():
+    with pytest.raises(SystemExit) as exc_info:
+        load_config("/nonexistent/config.yaml")
+    assert exc_info.value.code == 2
+
+
+def test_load_config_empty_file_returns_empty_dict(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("")
+    assert load_config(str(config_path)) == {}
+
+
+def test_load_config_invalid_yaml_fails(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("text: [unclosed\n")
+    with pytest.raises(SystemExit) as exc_info:
+        load_config(str(config_path))
+    assert exc_info.value.code == 2
+
+
+def test_load_config_non_mapping_top_level_fails(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("- just\n- a\n- list\n")
+    with pytest.raises(SystemExit) as exc_info:
+        load_config(str(config_path))
+    assert exc_info.value.code == 2
+
+
+def test_load_config_unknown_key_fails(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("bogus_key: 1\n")
+    with pytest.raises(SystemExit) as exc_info:
+        load_config(str(config_path))
+    assert exc_info.value.code == 2
+
+
+@pytest.mark.parametrize("key,bad_value", [
+    ("text", "not-a-list"),
+    ("text", "[1, 2]"),
+    ("regex", "not-a-list"),
+    ("boxes", "not-a-list"),
+    ("input", "[1, 2]"),
+    ("pages", "[1, 2]"),
+    ("fill_color", "[1, 2]"),
+    ("case_sensitive", "not-a-bool"),
+])
+def test_load_config_wrong_type_fails(tmp_path, key, bad_value):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(f"{key}: {bad_value}\n")
+    with pytest.raises(SystemExit) as exc_info:
+        load_config(str(config_path))
+    assert exc_info.value.code == 2
+
+
+def test_load_config_list_of_non_strings_fails(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("text:\n  - 1\n  - 2\n")
+    with pytest.raises(SystemExit) as exc_info:
+        load_config(str(config_path))
     assert exc_info.value.code == 2
 
 

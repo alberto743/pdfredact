@@ -16,12 +16,16 @@ import re
 import sys
 from typing import NoReturn
 
+import yaml
+
 # The `fitz` alias is deprecated and prints a warning to stdout, polluting
 # output in pipelines; the canonical name is preferred when available.
 try:
     import pymupdf as fitz
 except ImportError:  # PyMuPDF < 1.24
     import fitz
+
+DEFAULT_FILL_COLOR = "#000000"
 
 
 def fail(message: str) -> NoReturn:
@@ -146,6 +150,57 @@ def parse_fill_color(spec: str) -> tuple[float, float, float]:
         fail(f"invalid --fill-color: '{spec}' (expected hex format '#RRGGBB')")
     r, g, b = (int(value[i:i + 2], 16) for i in (0, 2, 4))
     return r / 255, g / 255, b / 255
+
+
+_CONFIG_LIST_KEYS = ("text", "regex", "boxes")
+_CONFIG_STR_KEYS = ("input", "output", "pages", "fill_color")
+_CONFIG_BOOL_KEYS = ("case_sensitive",)
+_CONFIG_KNOWN_KEYS = frozenset(_CONFIG_LIST_KEYS + _CONFIG_STR_KEYS + _CONFIG_BOOL_KEYS)
+
+
+def load_config(path: str) -> dict:
+    """
+    Load and validate a --config YAML file into a dict of option values.
+
+    Every key is optional, but a present key must have the right shape: any
+    deviation (unknown key, wrong type, non-mapping top level, unreadable or
+    unparsable file) fails loudly rather than being silently ignored or
+    coerced, matching the other spec-parsing functions in this module - a
+    quietly-dropped or misread config key could mean a PDF that looks
+    redacted per its rules but isn't.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except FileNotFoundError:
+        fail(f"config file not found: '{path}'")
+    except yaml.YAMLError as exc:
+        fail(f"invalid YAML in '{path}': {exc}")
+    except OSError as exc:
+        fail(f"could not read config file '{path}': {exc}")
+
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        fail(f"invalid config file '{path}': top level must be a mapping of option names to values")
+
+    unknown = sorted(set(data) - _CONFIG_KNOWN_KEYS)
+    if unknown:
+        fail(f"unknown key(s) in config file '{path}': {unknown}")
+
+    for key in _CONFIG_LIST_KEYS:
+        if key in data and (
+            not isinstance(data[key], list) or not all(isinstance(v, str) for v in data[key])
+        ):
+            fail(f"'{key}' in config file '{path}' must be a list of strings")
+    for key in _CONFIG_STR_KEYS:
+        if key in data and not isinstance(data[key], str):
+            fail(f"'{key}' in config file '{path}' must be a string")
+    for key in _CONFIG_BOOL_KEYS:
+        if key in data and not isinstance(data[key], bool):
+            fail(f"'{key}' in config file '{path}' must be true or false")
+
+    return data
 
 
 def _collapse_ws(text: str) -> str:

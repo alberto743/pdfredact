@@ -86,6 +86,8 @@ pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
 pdfredact input.pdf output.pdf --box "1:56,700,300,730"
 pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
 pdfredact input.pdf -t "Mario Rossi"              # scrive input_redacted.pdf
+pdfredact --config lavoro.yaml
+pdfredact input.pdf output.pdf --config regole.yaml -t "termine extra"
 ```
 
 Il percorso di output è opzionale: se omesso, viene usato di default
@@ -107,6 +109,44 @@ Formato: `PAGINA:x0,y0,x1,y1`
 - L'ordine degli angoli è irrilevante: il rettangolo viene normalizzato.
 - Un rettangolo interamente fuori dalla pagina non oscura nulla: viene segnalato su stderr e
   non conteggiato tra le occorrenze oscurate, così una coordinata errata non sembra un successo.
+
+### File di configurazione (`--config`)
+
+Qualsiasi opzione può essere impostata anche in un file YAML invece di essere ridigitata a ogni
+esecuzione:
+
+```yaml
+# lavoro.yaml
+input: input.pdf               # opzionale se fornito come posizionale sulla riga di comando
+output: output.pdf             # opzionale; di default <input>_redacted.pdf se omesso ovunque
+
+text:                          # termini letterali da oscurare (come -t ripetuto)
+  - "Mario Rossi"
+  - "CF: ABCDEF"
+
+regex:                         # pattern regex da oscurare (come -r ripetuto)
+  - '\bMCNP-\d{4}\b'
+
+boxes:                         # rettangoli espliciti, stesso formato "PAGINA:x0,y0,x1,y1" di --box
+  - "1:56,700,300,730"
+
+case_sensitive: false          # come --case-sensitive
+pages: "1,2,5-7"                # come --pages
+fill_color: "#000000"           # come --fill-color
+```
+
+Tutte le chiavi sono opzionali, e `pdfredact --config lavoro.yaml` da solo è un'invocazione
+valida se `input` è impostato nel file. I valori del file di configurazione e della riga di
+comando vengono uniti:
+
+- `text`, `regex` e `boxes` dalla riga di comando vengono **aggiunti** alle liste del file di
+  configurazione.
+- `input`, `output`, `pages`, `fill_color` e `case-sensitive` dalla riga di comando **sovrascrivono**
+  il valore del file di configurazione quando specificati esplicitamente.
+
+Ogni chiave viene validata come il corrispondente parametro CLI (stessi formati di
+`--box`/`--pages`/`--fill-color`); una chiave sconosciuta o un valore di tipo/formato errato
+termina immediatamente con codice di uscita 2 invece di essere ignorato silenziosamente.
 
 ### Codici di uscita
 

@@ -85,6 +85,8 @@ pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
 pdfredact input.pdf output.pdf --box "1:56,700,300,730"
 pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
 pdfredact input.pdf -t "Mario Rossi"              # writes input_redacted.pdf
+pdfredact --config job.yaml
+pdfredact input.pdf output.pdf --config rules.yaml -t "extra one-off term"
 ```
 
 The output path is optional: if omitted, it defaults to `<input>_redacted.pdf` next to the
@@ -106,6 +108,41 @@ Format: `PAGE:x0,y0,x1,y1`
 - Corner order doesn't matter: the rectangle is normalized.
 - A box that falls entirely outside the page redacts nothing: it's reported on stderr and
   not counted as a redacted occurrence, so a typo'd coordinate can't look like a success.
+
+### Config file (`--config`)
+
+Any option can also be set in a YAML file instead of retyped on every invocation:
+
+```yaml
+# job.yaml
+input: input.pdf              # optional if given positionally on the command line
+output: output.pdf            # optional; defaults to <input>_redacted.pdf if unset everywhere
+
+text:                         # literal terms to redact (like repeated -t)
+  - "Mario Rossi"
+  - "CF: ABCDEF"
+
+regex:                        # regex patterns to redact (like repeated -r)
+  - '\bMCNP-\d{4}\b'
+
+boxes:                        # explicit rectangles, same "PAGE:x0,y0,x1,y1" format as --box
+  - "1:56,700,300,730"
+
+case_sensitive: false         # like --case-sensitive
+pages: "1,2,5-7"               # like --pages
+fill_color: "#000000"          # like --fill-color
+```
+
+All keys are optional, and `pdfredact --config job.yaml` alone is a valid invocation if `input`
+is set in the file. Values from the config file and the command line are merged:
+
+- `text`, `regex`, and `boxes` from the command line are **added** to the config file's lists.
+- `input`, `output`, `pages`, `fill_color`, and `case-sensitive` from the command line
+  **override** the config file's value when explicitly passed.
+
+Each key is validated the same way as its CLI equivalent (same `--box`/`--pages`/`--fill-color`
+formats); an unknown key or a value of the wrong type/shape fails immediately with exit code 2
+rather than being silently ignored.
 
 ### Exit codes
 

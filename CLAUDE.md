@@ -22,10 +22,11 @@ REUSE" below). Hosted at `https://github.com/alberto743/pdfredact`.
 pip install -e .[test]
 ```
 
-Requires Python 3.10+ (uses `list[str]`, `set[int]`, `X | None` type hints). Only runtime
-dependency is `pymupdf`, which ships prebuilt wheels for Linux/Windows/macOS — no compiler
-needed anywhere. Build backend is Hatchling (`[build-system]` in `pyproject.toml`); package
-discovery is explicit via `[tool.hatch.build.targets.wheel] packages = ["src/pdfredact"]`.
+Requires Python 3.10+ (uses `list[str]`, `set[int]`, `X | None` type hints). Runtime
+dependencies are `pymupdf` and `pyyaml` (for `--config`), both of which ship prebuilt wheels for
+Linux/Windows/macOS — no compiler needed anywhere. Build backend is Hatchling (`[build-system]`
+in `pyproject.toml`); package discovery is explicit via
+`[tool.hatch.build.targets.wheel] packages = ["src/pdfredact"]`.
 
 Also installable with `pipx install .` (see README.md for full pipx/Windows-via-Scoop
 instructions) — this is the intended way for end users to get the `pdfredact` command without
@@ -46,10 +47,13 @@ pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
 pdfredact input.pdf output.pdf --box "1:56,700,300,730"
 pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
 pdfredact input.pdf -t "Mario Rossi"              # writes input_redacted.pdf
+pdfredact --config job.yaml
+pdfredact input.pdf output.pdf --config rules.yaml -t "extra one-off term"
 ```
 
 `output` is an optional positional argument; when omitted it defaults to
-`<input-stem>_redacted.pdf` in the input's own directory.
+`<input-stem>_redacted.pdf` in the input's own directory. `input` is optional too, as long as
+it's supplied via `--config` instead (see `load_config()` below).
 
 Or without installing: `python -m pdfredact ...` from the repo root.
 
@@ -87,7 +91,13 @@ assumes the package is installed (`pip install -e .[test]`) before running.
      hence the strict `_HEX_COLOR_RE` match instead of a bare length check. `parse_page_ranges()`
      still clamps a range's upper bound before materializing it (so `1-999999999` can't build a
      billion-element set) but now warns that it truncated, matching how a bare out-of-range page
-     number is reported.
+     number is reported. `load_config()` (for `--config`) applies the same philosophy to a whole
+     YAML file at once: `yaml.safe_load()`, then reject anything that isn't a mapping, any key
+     outside the known set (`input`, `output`, `text`, `regex`, `boxes`, `case_sensitive`,
+     `pages`, `fill_color`), and any value of the wrong type (e.g. `text: "foo"` instead of
+     `text: ["foo"]`) — no silent coercion, since a lazily-typed config key could otherwise mean
+     an option is quietly dropped instead of applied. `DEFAULT_FILL_COLOR = "#000000"` is a
+     shared constant so `cli.py`'s help text and its config-merge fallback can't drift apart.
   2. **Match finding** — `find_rects_for_pattern()` runs a compiled regex against
      `page.get_text()`, deduplicates the matched strings, then uses `page.search_for()` to get
      rects. Literal terms (`-t`) are compiled as `re.escape()`'d patterns so they share the same
@@ -108,13 +118,22 @@ assumes the package is installed (`pip install -e .[test]`) before running.
      *not* touch document metadata (Author, Title, XMP) or annotation/comment content, since
      those don't appear in `get_text()`. `cli.py` prints an explicit warning about this scope
      limitation.
-- **`cli.py`** — argparse setup and `main()`. `output` is an optional positional
-  (`nargs="?"`); when omitted it's derived from `input` right after the input-exists check
-  (`os.path.splitext(args.input)` → `<stem>_redacted.pdf`), so the existing samefile/output-dir
-  validation still runs against the derived path uniformly, with no special-casing. Validates
-  input/output paths up front (input exists, output dir exists, input != output to avoid
-  destroying the original in-place) before calling into `core.redact_pdf()`. This is the
-  `pdfredact` console-script entry point (`[project.scripts]` in `pyproject.toml`).
+- **`cli.py`** — argparse setup and `main()`. Both `input` and `output` are optional positionals
+  (`nargs="?"`); when `output` is omitted it's derived from `input` right after the input-exists
+  check (`os.path.splitext(input_path)` → `<stem>_redacted.pdf`), so the existing
+  samefile/output-dir validation still runs against the derived path uniformly, with no
+  special-casing. When `--config FILE.yaml` is given, `core.load_config()` loads it into a dict
+  and `main()` merges it with the parsed CLI args: list options (`terms`/`regexes`/`box_specs`)
+  are the CLI list **plus** the config's list; scalar options (`input`/`output`/`case_sensitive`/
+  `pages`/`fill_color`) take the CLI value if it was explicitly passed, else the config's value,
+  else the hardcoded default. Detecting "explicitly passed" requires the CLI's own defaults for
+  those scalar flags to be `None` instead of a real value (`--fill-color` used to default to
+  `"#000000"` directly; `--case-sensitive`'s `store_true` used to default to `False`) — otherwise
+  a config value could never be told apart from "user didn't pass this flag" and the merge
+  couldn't apply config-only fallback correctly. Validates input/output paths up front (input
+  exists, output dir exists, input != output to avoid destroying the original in-place) before
+  calling into `core.redact_pdf()`. This is the `pdfredact` console-script entry point
+  (`[project.scripts]` in `pyproject.toml`).
 - **`__main__.py`** — enables `python -m pdfredact`.
 
 Known limitation callouts (already handled/documented in code, don't "fix" without discussion):
