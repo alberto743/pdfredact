@@ -2,14 +2,12 @@
 # SPDX-License-Identifier: MPL-2.0
 """Fixtures to generate synthetic PDFs on the fly with PyMuPDF (no binaries in the repo)."""
 
-from __future__ import annotations
-
 import pytest
 
-try:
-    import pymupdf as fitz
-except ImportError:
-    import fitz
+# The `fitz` alias is deprecated and prints a warning to stdout; the canonical
+# name is used instead (guaranteed available by the pymupdf>=1.24 dependency
+# floor in pyproject.toml).
+import pymupdf as fitz
 
 PAGE_WIDTH = 595
 PAGE_HEIGHT = 842

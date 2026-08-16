@@ -7,8 +7,6 @@ Assumes the package is installed (e.g. `pip install -e .[test]`), so it
 exercises exactly the path a real user would use.
 """
 
-from __future__ import annotations
-
 import re
 import subprocess
 import sys

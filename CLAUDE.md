@@ -83,6 +83,9 @@ matching are reproduced (words separated by a cursor jump, with no space glyph b
 `test_core.py` unit-tests `src/pdfredact/core.py` functions directly; `test_cli.py` drives the
 CLI as a subprocess (`python -m pdfredact`) to check exit codes and stderr messages end-to-end.
 `test_cli.py` assumes the package is installed (`pip install -e .[test]`) before running.
+`conftest.py`/`test_core.py` import PyMuPDF the same way `core.py` does — plain `import pymupdf
+as fitz`, no fallback and no `from __future__ import annotations` — since the 3.10 floor and the
+`pymupdf>=1.24` dependency floor make both unnecessary here too.
 
 ## Architecture
 
