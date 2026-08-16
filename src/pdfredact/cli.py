@@ -139,10 +139,13 @@ def main() -> None:
     print(f"File saved to: {output_path}")
 
     if hits == 0:
+        hint = (" Whole-word matching is on by default for -t/--text, so a term "
+                "that only ever appears inside a longer word needs "
+                "--no-whole-word." if whole_word and terms else "")
         print("WARNING: no occurrences found - the output file is an unredacted "
               "copy. Check the searched text: it might be split across multiple "
               "lines, use a non-extractable font/encoding, or be image-only "
-              "(a scanned PDF, which requires OCR).", file=sys.stderr)
+              f"(a scanned PDF, which requires OCR).{hint}", file=sys.stderr)
 
     print("Note: document metadata (Author, Title, XMP) and annotation/comment "
           "content are NOT handled, since they don't appear in get_text(). "

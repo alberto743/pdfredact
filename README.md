@@ -110,6 +110,11 @@ still correctly matches even though nothing changes on that side - it just won't
 back to plain substring matching. This only affects `-t`; `-r/--regex` patterns are never
 touched, since you already have full manual control there via your own `\b`.
 
+Word boundaries are decided from where the characters actually sit on the page, not just from
+the extracted text: many PDFs separate words (table columns, form fields, right-aligned values)
+by moving the text cursor instead of writing a space, so a visible gap counts as a boundary
+even when there is no whitespace character between the two words.
+
 ### Rectangle coordinates (`--box`)
 
 Format: `PAGE:x0,y0,x1,y1`
@@ -140,10 +145,11 @@ regex:                        # regex patterns to redact (like repeated -r)
 boxes:                        # explicit rectangles, same "PAGE:x0,y0,x1,y1" format as --box
   - "1:56,700,300,730"
 
-case_sensitive: false         # like --case-sensitive
+case_sensitive: false          # like --case-sensitive
 whole_word: true               # like --whole-word
 pages: "1,2,5-7"               # like --pages
-fill_color: "#000000"          # like --fill-color
+fill_color: "#000000"          # like --fill-color; keep the quotes, an unquoted
+                               # '#' would start a YAML comment
 ```
 
 All keys are optional, and `pdfredact --config job.yaml` alone is a valid invocation if `input`
@@ -176,7 +182,8 @@ rather than being silently ignored.
   nothing to redact in that case.
 - Whole-word matching (the default for `-t`) only checks the character immediately before/after
   a match on the same line, so it's most reliable for terms that don't themselves span a line
-  break.
+  break. If a PDF packs two words so tightly that the extracted text runs them together with no
+  gap at all, there is no boundary left to find: `--no-whole-word` is the fallback there.
 
 Always verify the output with `pdftotext` and `pdfinfo -meta` before distribution.
 

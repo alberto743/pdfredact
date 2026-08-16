@@ -201,7 +201,13 @@ def load_config(path: str) -> dict:
             fail(f"'{key}' in config file '{path}' must be a list of strings")
     for key in _CONFIG_STR_KEYS:
         if key in data and not isinstance(data[key], str):
-            fail(f"'{key}' in config file '{path}' must be a string")
+            # A None value almost always means the value was left unquoted and
+            # started with '#' (e.g. `fill_color: #000000`), which YAML reads as
+            # a comment and leaves the key empty - point at that directly instead
+            # of just restating the expected type.
+            hint = (f" (an unquoted '#' starts a YAML comment: write {key}: \"...\")"
+                    if data[key] is None else "")
+            fail(f"'{key}' in config file '{path}' must be a string{hint}")
     for key in _CONFIG_BOOL_KEYS:
         if key in data and not isinstance(data[key], bool):
             fail(f"'{key}' in config file '{path}' must be true or false")
@@ -252,15 +258,31 @@ def _wrap_whole_word(raw_term: str, escaped_term: str) -> str:
     return f"{prefix}{escaped_term}{suffix}"
 
 
-def _page_chars(page: "fitz.Page") -> list[tuple[str, "fitz.Rect"]]:
-    """Flatten page.get_text('rawdict') into a list of (character, bbox) pairs."""
-    chars = []
+def _page_lines(page: "fitz.Page") -> list:
+    """
+    Flatten page.get_text('rawdict') into per-line character lists.
+
+    Each entry is (line_y0, line_y1, chars) where chars holds one
+    (x0, x1, height, character) tuple per glyph, sorted left to right.
+    Grouping by line keeps the adjacency lookup below proportional to the
+    length of the line a match sits on instead of to the whole page, which
+    matters when many terms are searched across many pages; plain float
+    tuples are used instead of fitz.Rect because that lookup touches every
+    candidate character and Rect attribute access is comparatively slow.
+    """
+    lines = []
     for block in page.get_text("rawdict")["blocks"]:
         for line in block.get("lines", []):
+            chars = []
             for span in line["spans"]:
                 for ch in span["chars"]:
-                    chars.append((ch["c"], fitz.Rect(ch["bbox"])))
-    return chars
+                    x0, y0, x1, y1 = ch["bbox"]
+                    chars.append((x0, x1, y1 - y0, ch["c"]))
+            if not chars:
+                continue
+            chars.sort()
+            lines.append((line["bbox"][1], line["bbox"][3], chars))
+    return lines
 
 
 # Points; float-precision tolerance when aligning a rect edge to a character
@@ -268,34 +290,60 @@ def _page_chars(page: "fitz.Page") -> list[tuple[str, "fitz.Rect"]]:
 # mistakenly skip past a genuinely adjacent character.
 _RECT_EDGE_EPS = 0.75
 
+# Fraction of a character's own height (a good proxy for the font size) that
+# may separate it from a match and still count as "touching" it. Characters
+# within a word are laid out edge to edge, so their gap is ~0; anything wider
+# than this is whitespace the producer drew by jumping to a new position
+# instead of emitting a space glyph, which is a word boundary just the same.
+_MAX_ADJACENT_GAP_RATIO = 0.1
+
 
 def _adjacent_char(
-    chars: list[tuple[str, "fitz.Rect"]], x: float, y0: float, y1: float, side: str,
+    lines: list, x: float, y0: float, y1: float, side: str,
 ) -> str | None:
     """
     Find the character immediately touching position `x` on the given
     `side` ('before' or 'after'), restricted to characters on the same line
-    as [y0, y1). Returns None if there is none (start/end of line or page).
+    as [y0, y1). Returns None if there is none.
+
+    "None" covers both ends of a line and, crucially, a character separated
+    from `x` by a visible gap: PDF producers routinely space out words (table
+    columns, form fields, justified text) by moving the text cursor rather
+    than by drawing a space glyph, and the extracted character stream then
+    has no whitespace at all between them. Treating the nearest character as
+    adjacent regardless of distance made every such word look embedded in its
+    neighbour, so whole-word mode silently dropped the match and left the text
+    unredacted - the exact failure this function exists to prevent.
     """
-    best, best_dist = None, None
-    for c, bbox in chars:
-        if bbox.y1 <= y0 or bbox.y0 >= y1:
+    best = best_dist = best_limit = None
+    for line_y0, line_y1, chars in lines:
+        if line_y1 <= y0 or line_y0 >= y1:
             continue  # different line
-        if side == "before":
-            if bbox.x1 > x + _RECT_EDGE_EPS:
-                continue
-            dist = x - bbox.x1
-        else:
-            if bbox.x0 < x - _RECT_EDGE_EPS:
-                continue
-            dist = bbox.x0 - x
-        if best_dist is None or dist < best_dist:
-            best, best_dist = c, dist
+        # Each line is sorted left to right, so the scan can stop as soon as it
+        # is past the position of interest.
+        for cx0, cx1, height, c in chars:
+            if side == "before":
+                if cx0 > x + _RECT_EDGE_EPS:
+                    break  # this and every following character start after x
+                if cx1 > x + _RECT_EDGE_EPS:
+                    continue  # overlaps x instead of ending before it
+                dist = x - cx1
+            else:
+                if cx0 < x - _RECT_EDGE_EPS:
+                    continue  # still left of x
+                dist = cx0 - x
+            if best_dist is None or dist < best_dist:
+                best, best_dist = c, dist
+                best_limit = max(_RECT_EDGE_EPS, _MAX_ADJACENT_GAP_RATIO * height)
+            if side == "after":
+                break  # the first character starting at/after x is the nearest
+    if best is None or best_dist > best_limit:
+        return None
     return best
 
 
 def _filter_whole_word_rects(
-    page: "fitz.Page", matched_text: str, rects: list["fitz.Rect"],
+    lines: list, matched_text: str, rects: list["fitz.Rect"],
 ) -> list["fitz.Rect"]:
     """
     Narrow `rects` (as returned by page.search_for(matched_text)) down to
@@ -317,11 +365,10 @@ def _filter_whole_word_rects(
     need_prefix, need_suffix = _needs_word_boundary(matched_text)
     if not (need_prefix or need_suffix):
         return rects
-    chars = _page_chars(page)
     kept = []
     for r in rects:
-        before = _adjacent_char(chars, r.x0, r.y0, r.y1, "before")
-        after = _adjacent_char(chars, r.x1, r.y0, r.y1, "after")
+        before = _adjacent_char(lines, r.x0, r.y0, r.y1, "before")
+        after = _adjacent_char(lines, r.x1, r.y0, r.y1, "after")
         prefix_ok = not need_prefix or before is None or not _WORD_CHAR_RE.match(before)
         suffix_ok = not need_suffix or after is None or not _WORD_CHAR_RE.match(after)
         if prefix_ok and suffix_ok:
@@ -329,8 +376,51 @@ def _filter_whole_word_rects(
     return kept
 
 
+class PageText:
+    """
+    Text extractions for one page, computed on first use and reused.
+
+    page.get_text() and page.get_text('rawdict') dominate the cost of a run,
+    and every pattern searches the same page: without this the plain text was
+    re-extracted once per pattern and the character map once per matched
+    string, so a job with many -t terms paid for the same extraction dozens of
+    times per page.
+    """
+
+    __slots__ = ("_page", "_text", "_lines")
+
+    def __init__(self, page: "fitz.Page") -> None:
+        self._page = page
+        self._text = None
+        self._lines = None
+
+    @property
+    def text(self) -> str:
+        """The page's plain extracted text (page.get_text())."""
+        if self._text is None:
+            self._text = self._page.get_text()
+        return self._text
+
+    @property
+    def lines(self) -> list:
+        """The page's characters grouped by line (see _page_lines())."""
+        if self._lines is None:
+            self._lines = _page_lines(self._page)
+        return self._lines
+
+
+def _warn_not_redacted(page: "fitz.Page", matched: str, reason: str) -> None:
+    """Report a pattern match that did not end up producing a redaction."""
+    print(f"Warning: matched {matched.strip()!r} on page {page.number + 1} but "
+          f"{reason} - it was NOT redacted", file=sys.stderr)
+
+
 def find_rects_for_pattern(
-    page: "fitz.Page", pattern: "re.Pattern", case_sensitive: bool, whole_word: bool = False,
+    page: "fitz.Page",
+    pattern: "re.Pattern",
+    case_sensitive: bool,
+    whole_word: bool = False,
+    cache: PageText | None = None,
 ) -> list["fitz.Rect"]:
     """
     Find the rectangles matching a compiled regex pattern on a page.
@@ -346,22 +436,37 @@ def find_rects_for_pattern(
     _filter_whole_word_rects() to drop occurrences embedded in a longer
     word, since search_for() itself has no notion of word boundaries.
 
-    A matched string that cannot be located on the page is reported on stderr:
-    staying silent would mean the caller counts fewer redactions than the
-    pattern matched without any way to notice the text survived.
+    A matched string that ends up with no rectangle is reported on stderr,
+    together with the reason it was dropped: staying silent would mean the
+    caller counts fewer redactions than the pattern matched without any way to
+    notice the text survived.
+
+    `cache` carries the page's extractions across the several patterns a run
+    searches on the same page; when omitted it is built for this call alone.
     """
-    text = page.get_text()
+    if cache is None:
+        cache = PageText(page)
     # Empty matches (e.g. regex 'X*' or '.?' that can match an empty
     # string) would make search_for() return None, causing a TypeError.
     unique_strings = dict.fromkeys(
-        m.group(0) for m in pattern.finditer(text) if m.group(0).strip()
+        m.group(0) for m in pattern.finditer(cache.text) if m.group(0).strip()
     )
 
     rects = []
     for s in unique_strings:
         found = page.search_for(s) or []  # search_for() may return None
+        if not found:
+            _warn_not_redacted(page, s, "it could not be located on the page")
+            continue
         if whole_word:
-            found = _filter_whole_word_rects(page, s, found)
+            found = _filter_whole_word_rects(cache.lines, s, found)
+            if not found:
+                _warn_not_redacted(
+                    page, s, "every occurrence found on the page is part of a longer "
+                             "word (whole-word matching is on by default for -t/--text; "
+                             "pass --no-whole-word to match substrings too)",
+                )
+                continue
         if case_sensitive:
             # search_for() returns one rectangle per line the match spans, so a
             # match crossing a line break comes back as several fragments.
@@ -374,11 +479,11 @@ def find_rects_for_pattern(
                 r for r in found
                 if (box := _collapse_ws(page.get_textbox(r))) and box in needle
             ]
-        if not found:
-            print(f"Warning: matched {s.strip()!r} on page {page.number + 1} but "
-                  f"could not locate it on the page - it was NOT redacted",
-                  file=sys.stderr)
-            continue
+            if not found:
+                _warn_not_redacted(
+                    page, s, "no occurrence found on the page matches its exact case",
+                )
+                continue
         rects.extend(found)
     return rects
 
@@ -468,12 +573,19 @@ def redact_pdf(
             rects = []
 
             if pno in target_pages:
+                # One cache per page, shared by every pattern, so the page's
+                # text is extracted once instead of once per pattern.
+                cache = PageText(page)
                 for pattern in term_patterns:
                     rects.extend(
-                        find_rects_for_pattern(page, pattern, case_sensitive, whole_word),
+                        find_rects_for_pattern(
+                            page, pattern, case_sensitive, whole_word, cache,
+                        ),
                     )
                 for pattern in regex_patterns:
-                    rects.extend(find_rects_for_pattern(page, pattern, case_sensitive))
+                    rects.extend(
+                        find_rects_for_pattern(page, pattern, case_sensitive, cache=cache),
+                    )
 
             # A box entirely outside the page is accepted by add_redact_annot()
             # but wipes nothing, so counting it as a hit would report a

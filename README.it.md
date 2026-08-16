@@ -113,6 +113,12 @@ lato non cambia nulla - semplicemente non corrisponderà dentro "NonConfidenzial
 sottostringa. Questo vale solo per `-t`; i pattern `-r/--regex` non sono mai toccati, dato che
 lì si ha già pieno controllo manuale tramite il proprio `\b`.
 
+I confini di parola sono determinati dalla posizione reale dei caratteri sulla pagina, non solo
+dal testo estratto: molti PDF separano le parole (colonne di tabelle, campi di moduli, valori
+allineati a destra) spostando il cursore di testo invece di scrivere uno spazio, quindi uno
+spazio visibile vale come confine anche quando tra le due parole non c'è alcun carattere di
+spaziatura.
+
 ### Coordinate rettangolo (`--box`)
 
 Formato: `PAGINA:x0,y0,x1,y1`
@@ -145,9 +151,10 @@ boxes:                         # rettangoli espliciti, stesso formato "PAGINA:x0
   - "1:56,700,300,730"
 
 case_sensitive: false          # come --case-sensitive
-whole_word: true                # come --whole-word
-pages: "1,2,5-7"                # come --pages
-fill_color: "#000000"           # come --fill-color
+whole_word: true               # come --whole-word
+pages: "1,2,5-7"               # come --pages
+fill_color: "#000000"          # come --fill-color; mantenere le virgolette, un '#'
+                               # non quotato inizierebbe un commento YAML
 ```
 
 Tutte le chiavi sono opzionali, e `pdfredact --config lavoro.yaml` da solo è un'invocazione
@@ -183,7 +190,9 @@ termina immediatamente con codice di uscita 2 invece di essere ignorato silenzio
   strumento non trova nulla da oscurare in quel caso.
 - La corrispondenza per parola intera (predefinita per `-t`) controlla solo il carattere
   immediatamente prima/dopo una corrispondenza sulla stessa riga, quindi è più affidabile per
-  termini che non attraversano essi stessi un a capo.
+  termini che non attraversano essi stessi un a capo. Se un PDF avvicina due parole al punto che
+  il testo estratto le unisce senza alcuno spazio, non resta alcun confine da individuare: in
+  quel caso la soluzione è `--no-whole-word`.
 
 Verificare sempre l'output con `pdftotext` e `pdfinfo -meta` prima della distribuzione.
 

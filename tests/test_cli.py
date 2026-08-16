@@ -127,6 +127,17 @@ def test_cli_zero_hits_warns_on_stderr(sample_pdf, tmp_path):
     assert out.exists()
 
 
+def test_cli_zero_hits_hints_at_whole_word(make_pdf, tmp_path):
+    """A term that only ever appears inside a longer word finds nothing under
+    the default whole-word matching, so the zero-hit warning must name that as
+    a likely cause - it is the one cause the user can fix with a flag."""
+    pdf = make_pdf("embedded.pdf", ["Mariotti only"])
+    out = tmp_path / "out.pdf"
+    result = run_cli(str(pdf), str(out), "-t", "Mario")
+    assert result.returncode == 0
+    assert "--no-whole-word" in result.stderr
+
+
 def test_cli_invalid_fill_color(sample_pdf, tmp_path):
     out = tmp_path / "out.pdf"
     result = run_cli(str(sample_pdf), str(out), "-t", "Mario Rossi", "--fill-color", "notacolor")

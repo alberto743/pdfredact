@@ -49,6 +49,7 @@ is the single source of truth.
 pdfredact input.pdf output.pdf -t "Mario Rossi" -t "CF: ABCDEF"
 pdfredact input.pdf output.pdf -r "\bMCNP-\d{4}\b"
 pdfredact input.pdf output.pdf -t "Confidential" --case-sensitive
+pdfredact input.pdf output.pdf -t "Mario" --no-whole-word   # also matches "Mariotti"
 pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
 pdfredact input.pdf output.pdf --box "1:56,700,300,730"
 pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
@@ -75,10 +76,12 @@ pytest tests/test_core.py::test_redact_pdf_literal_term   # single test
 ```
 
 `tests/conftest.py` generates synthetic PDFs on the fly via PyMuPDF (`page.insert_text()`) —
-there are no binary PDF fixtures checked into the repo. `test_core.py` unit-tests
-`src/pdfredact/core.py` functions directly; `test_cli.py` drives the CLI as a subprocess
-(`python -m pdfredact`) to check exit codes and stderr messages end-to-end. `test_cli.py`
-assumes the package is installed (`pip install -e .[test]`) before running.
+there are no binary PDF fixtures checked into the repo. The `make_positioned_pdf` fixture places
+each text run at explicit coordinates, which is how the table/form layouts that broke whole-word
+matching are reproduced (words separated by a cursor jump, with no space glyph between them).
+`test_core.py` unit-tests `src/pdfredact/core.py` functions directly; `test_cli.py` drives the
+CLI as a subprocess (`python -m pdfredact`) to check exit codes and stderr messages end-to-end.
+`test_cli.py` assumes the package is installed (`pip install -e .[test]`) before running.
 
 ## Architecture
 
@@ -101,9 +104,12 @@ assumes the package is installed (`pip install -e .[test]`) before running.
      number is reported. `load_config()` (for `--config`) applies the same philosophy to a whole
      YAML file at once: `yaml.safe_load()`, then reject anything that isn't a mapping, any key
      outside the known set (`input`, `output`, `text`, `regex`, `boxes`, `case_sensitive`,
-     `pages`, `fill_color`), and any value of the wrong type (e.g. `text: "foo"` instead of
-     `text: ["foo"]`) — no silent coercion, since a lazily-typed config key could otherwise mean
-     an option is quietly dropped instead of applied. Note the `UnicodeDecodeError` clause in
+     `whole_word`, `pages`, `fill_color`), and any value of the wrong type (e.g. `text: "foo"`
+     instead of `text: ["foo"]`) — no silent coercion, since a lazily-typed config key could
+     otherwise mean an option is quietly dropped instead of applied. A string-typed key whose
+     value came back `None` gets a targeted hint about YAML comments, because `fill_color:
+     #000000` (unquoted) is the one mistake this format invites: YAML reads the value as a
+     comment and leaves the key empty. Note the `UnicodeDecodeError` clause in
      `load_config()`'s `except` chain: a non-UTF-8 config file raises it from inside
      `yaml.safe_load()`, and it's a `ValueError` — neither an `OSError` nor a `yaml.YAMLError` —
      so without it the file escaped as a traceback with exit 1 instead of a clean exit 2.
@@ -117,7 +123,39 @@ assumes the package is installed (`pip install -e .[test]`) before running.
      compares *whitespace-collapsed containment* (`box in needle`), not equality, because
      `search_for()` returns one rect per line a match spans; equality dropped every fragment of a
      multi-line match and silently left it unredacted. A matched string that resolves to no rect
-     at all is reported on stderr rather than skipped quietly.
+     at all is reported on stderr rather than skipped quietly, with the reason it was dropped
+     (not found / all occurrences embedded in a longer word / no occurrence in the right case) —
+     a single generic "could not locate it on the page" pointed at the wrong cause for two of
+     the three.
+
+     **Whole-word matching** (`-t` only, on by default, `DEFAULT_WHOLE_WORD`) is enforced twice,
+     because the two halves of the pipeline disagree about what a word is. The regex against
+     `get_text()` gets `\b` wrapped around the edges of the term that are themselves word
+     characters (`_wrap_whole_word()`/`_needs_word_boundary()`; wrapping unconditionally would
+     stop `"Confidential:"` from ever matching, a false negative). But that is only a
+     page-level pre-check: `search_for()` is a raw substring search with no notion of word
+     boundaries, so each returned rect is then filtered geometrically by
+     `_filter_whole_word_rects()`, which looks up the character physically adjacent to the rect
+     via `_adjacent_char()` over `get_text("rawdict")` positions. `-r` patterns never go through
+     either step — they keep manual control via their own `\b`.
+
+     `_adjacent_char()` treats a character as adjacent only if it (nearly) touches the rect
+     edge: within `_RECT_EDGE_EPS`, or `_MAX_ADJACENT_GAP_RATIO` (0.1) of the character's own
+     height, which stands in for the font size. The gap limit is not cosmetic. PDF producers
+     routinely separate words by moving the text cursor instead of drawing a space glyph (table
+     columns, form fields, right-aligned values), so the extracted character stream reads
+     `Name:MarioRossi` with no whitespace anywhere; taking the nearest character regardless of
+     distance made every such word look embedded in its neighbour and whole-word mode dropped
+     the match — leaving the term unredacted on exactly the form-like PDFs this tool is aimed
+     at. Characters inside a real word are laid out edge to edge (gap ~0), so the threshold
+     separates the two cases with a wide margin. Don't widen it to the width of a space: a
+     separately-drawn run that starts exactly where the previous one ends is still one word.
+
+     `PageText` caches a page's `get_text()` and `_page_lines()` results for the whole run over
+     that page. Before it, the plain text was re-extracted once per pattern and the character
+     map once per *matched string*, which dominated the runtime of any job with several `-t`
+     terms. `_page_lines()` groups characters by line and sorts each line left to right so the
+     adjacency scan is bounded by the line, not the page, and can break early.
   3. **Redaction** (`redact_pdf()`) — per page, collects rects from text search (only on pages in
      `--pages`) plus explicit `--box` rects (which apply regardless of `--pages`, and are dropped
      with a warning if they don't intersect `page.rect`, since an off-page box wipes nothing but
@@ -140,18 +178,22 @@ assumes the package is installed (`pip install -e .[test]`) before running.
   When `--config FILE.yaml` is given, `core.load_config()` loads it into a dict
   and `main()` merges it with the parsed CLI args: list options (`terms`/`regexes`/`box_specs`)
   are the CLI list **plus** the config's list; scalar options (`input`/`output`/`case_sensitive`/
-  `pages`/`fill_color`) take the CLI value if it was explicitly passed, else the config's value,
-  else the hardcoded default. Detecting "explicitly passed" requires the CLI's own defaults for
-  those scalar flags to be `None` instead of a real value (`--fill-color` used to default to
-  `"#000000"` directly; `--case-sensitive` used to be `store_true`, defaulting to `False`) —
-  otherwise a config value could never be told apart from "user didn't pass this flag" and the
-  merge couldn't apply config-only fallback correctly. `--case-sensitive` is now
+  `whole_word`/`pages`/`fill_color`) take the CLI value if it was explicitly passed, else the
+  config's value, else the hardcoded default. Detecting "explicitly passed" requires the CLI's
+  own defaults for those scalar flags to be `None` instead of a real value (`--fill-color` used
+  to default to `"#000000"` directly; `--case-sensitive` used to be `store_true`, defaulting to
+  `False`) — otherwise a config value could never be told apart from "user didn't pass this
+  flag" and the merge couldn't apply config-only fallback correctly. `--case-sensitive` is now
   `argparse.BooleanOptionalAction` (default `None`), which also generates a `--no-case-sensitive`
   counterpart — without it, a config file's `case_sensitive: true` could never be overridden back
   to `false` from the command line, since plain `store_true` has no way to produce an explicit
-  `False`. Validates input/output paths up front (input
-  exists, output dir exists, input != output to avoid destroying the original in-place) before
-  calling into `core.redact_pdf()`. This is the `pdfredact` console-script entry point
+  `False`. `--whole-word` is the same kind of flag for the same reason (default `None`, with a
+  generated `--no-whole-word`, falling back to `DEFAULT_WHOLE_WORD`). Validates input/output
+  paths up front (input exists, output dir exists, input != output to avoid destroying the
+  original in-place) before
+  calling into `core.redact_pdf()`. The zero-hit `WARNING` appends a whole-word hint when the run
+  used `-t` terms with whole-word matching on, since that is now a likely cause of an empty
+  result. This is the `pdfredact` console-script entry point
   (`[project.scripts]` in `pyproject.toml`).
 - **`__main__.py`** — enables `python -m pdfredact`.
 

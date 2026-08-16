@@ -245,6 +245,18 @@ def test_load_config_non_utf8_fails(tmp_path):
     assert exc_info.value.code == 2
 
 
+def test_load_config_unquoted_hash_value_hints_at_yaml_comment(tmp_path, capsys):
+    """'fill_color: #000000' is the single easiest mistake to make in this
+    config format: YAML reads the value as a comment and leaves the key empty,
+    so the error must name the cause instead of just the expected type."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("fill_color: #000000\n")
+    with pytest.raises(SystemExit) as exc_info:
+        load_config(str(config_path))
+    assert exc_info.value.code == 2
+    assert "YAML comment" in capsys.readouterr().err
+
+
 def test_load_config_list_of_non_strings_fails(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text("text:\n  - 1\n  - 2\n")
@@ -388,6 +400,56 @@ def test_redact_pdf_whole_word_punctuation_edge_no_false_negative(make_pdf, tmp_
     # "NonConfidential:") rather than disappearing entirely.
     assert "NonConfidential:" in text
     assert text.count("Confidential:") == 1
+
+
+def test_redact_pdf_whole_word_across_positioned_gap(make_positioned_pdf, tmp_path):
+    """Table/form layouts place each column with its own text-positioning
+    operator and no space glyph in between, so the page's character stream
+    reads 'Name:MarioRossi' with nothing separating the columns. Treating the
+    nearest character as adjacent regardless of the gap made whole-word mode
+    consider the term embedded in the previous column and silently leave it
+    unredacted - a false negative on a very common kind of PDF."""
+    pdf = make_positioned_pdf(
+        "table.pdf", [[(72, 100, "Name:"), (200, 100, "Mario"), (300, 100, "Rossi")]],
+    )
+    out = tmp_path / "out.pdf"
+    hits = redact_pdf(str(pdf), str(out), ["Mario"], [], [], False, None)
+    assert hits == 1
+    text = _extract_text(out)
+    assert "Mario" not in text
+    assert "Name:" in text and "Rossi" in text
+
+
+def test_whole_word_filter_still_rejects_embedded_across_runs(make_positioned_pdf):
+    """The gap tolerance must not swing the other way: two runs drawn back to
+    back (here "Mario" + "tti", the second starting exactly where the first
+    ends) form a single word on the page, so the geometric filter must still
+    reject the match - being drawn as its own run is not a word boundary."""
+    pdf = make_positioned_pdf("runs.pdf", [[(72, 100, "Mario"), (99.5, 100, "tti")]])
+    doc = fitz.open(str(pdf))
+    try:
+        assert find_rects_for_pattern(
+            doc[0], re.compile("Mario"), case_sensitive=False, whole_word=True,
+        ) == []
+    finally:
+        doc.close()
+
+
+def test_find_rects_whole_word_drop_is_reported_distinctly(make_pdf, capsys):
+    """A match dropped by the whole-word filter was reported as 'could not
+    locate it on the page', which points at the wrong cause entirely."""
+    pdf = make_pdf("embedded.pdf", ["Mariotti only"])
+    doc = fitz.open(str(pdf))
+    try:
+        rects = find_rects_for_pattern(
+            doc[0], re.compile("Mario"), case_sensitive=False, whole_word=True,
+        )
+    finally:
+        doc.close()
+    assert rects == []
+    err = capsys.readouterr().err
+    assert "part of a longer word" in err
+    assert "NOT redacted" in err
 
 
 def test_redact_pdf_box_applies_regardless_of_pages_filter(sample_pdf, tmp_path):
