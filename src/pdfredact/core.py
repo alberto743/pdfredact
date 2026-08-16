@@ -26,6 +26,7 @@ except ImportError:  # PyMuPDF < 1.24
     import fitz
 
 DEFAULT_FILL_COLOR = "#000000"
+DEFAULT_WHOLE_WORD = True
 
 
 def fail(message: str) -> NoReturn:
@@ -154,7 +155,7 @@ def parse_fill_color(spec: str) -> tuple[float, float, float]:
 
 _CONFIG_LIST_KEYS = ("text", "regex", "boxes")
 _CONFIG_STR_KEYS = ("input", "output", "pages", "fill_color")
-_CONFIG_BOOL_KEYS = ("case_sensitive",)
+_CONFIG_BOOL_KEYS = ("case_sensitive", "whole_word")
 _CONFIG_KNOWN_KEYS = frozenset(_CONFIG_LIST_KEYS + _CONFIG_STR_KEYS + _CONFIG_BOOL_KEYS)
 
 
@@ -213,8 +214,123 @@ def _collapse_ws(text: str) -> str:
     return " ".join(text.split())
 
 
+_WORD_CHAR_RE = re.compile(r"\w")
+
+
+def _needs_word_boundary(term: str) -> tuple[bool, bool]:
+    """
+    Whether a whole-word match must enforce a boundary before/after `term`,
+    based on whether its first/last character is itself a word character.
+    Requiring \\b unconditionally on both sides would silently stop matching
+    terms that start/end in punctuation once followed by non-word text (\\b
+    needs a word/non-word transition) - a false negative, which is worse
+    than the over-matching whole-word mode exists to fix. Requiring a
+    boundary only on the word-char edges already eliminates the cross-word
+    false positives it targets (e.g. "Mario" no longer matches inside
+    "Mariotti", nor "Confidential:" inside "NonConfidential:") without that
+    risk.
+    """
+    need_prefix = bool(term) and bool(_WORD_CHAR_RE.match(term[0]))
+    need_suffix = bool(term) and bool(_WORD_CHAR_RE.match(term[-1]))
+    return need_prefix, need_suffix
+
+
+def _wrap_whole_word(raw_term: str, escaped_term: str) -> str:
+    """
+    Anchor `escaped_term` with a regex \\b on each edge that needs one (see
+    _needs_word_boundary). This is only a cheap pre-check for whether
+    `raw_term` has ANY genuine whole-word occurrence on the page at all -
+    the \\b here constrains the *text* search against page.get_text(), not
+    the rectangles page.search_for() later returns for the matched string,
+    since search_for() is a raw substring search blind to word boundaries.
+    The actual per-occurrence filtering happens geometrically afterwards,
+    in _filter_whole_word_rects().
+    """
+    need_prefix, need_suffix = _needs_word_boundary(raw_term)
+    prefix = r"\b" if need_prefix else ""
+    suffix = r"\b" if need_suffix else ""
+    return f"{prefix}{escaped_term}{suffix}"
+
+
+def _page_chars(page: "fitz.Page") -> list[tuple[str, "fitz.Rect"]]:
+    """Flatten page.get_text('rawdict') into a list of (character, bbox) pairs."""
+    chars = []
+    for block in page.get_text("rawdict")["blocks"]:
+        for line in block.get("lines", []):
+            for span in line["spans"]:
+                for ch in span["chars"]:
+                    chars.append((ch["c"], fitz.Rect(ch["bbox"])))
+    return chars
+
+
+# Points; float-precision tolerance when aligning a rect edge to a character
+# bbox edge. Comfortably smaller than any real character's width, so it can't
+# mistakenly skip past a genuinely adjacent character.
+_RECT_EDGE_EPS = 0.75
+
+
+def _adjacent_char(
+    chars: list[tuple[str, "fitz.Rect"]], x: float, y0: float, y1: float, side: str,
+) -> str | None:
+    """
+    Find the character immediately touching position `x` on the given
+    `side` ('before' or 'after'), restricted to characters on the same line
+    as [y0, y1). Returns None if there is none (start/end of line or page).
+    """
+    best, best_dist = None, None
+    for c, bbox in chars:
+        if bbox.y1 <= y0 or bbox.y0 >= y1:
+            continue  # different line
+        if side == "before":
+            if bbox.x1 > x + _RECT_EDGE_EPS:
+                continue
+            dist = x - bbox.x1
+        else:
+            if bbox.x0 < x - _RECT_EDGE_EPS:
+                continue
+            dist = bbox.x0 - x
+        if best_dist is None or dist < best_dist:
+            best, best_dist = c, dist
+    return best
+
+
+def _filter_whole_word_rects(
+    page: "fitz.Page", matched_text: str, rects: list["fitz.Rect"],
+) -> list["fitz.Rect"]:
+    """
+    Narrow `rects` (as returned by page.search_for(matched_text)) down to
+    genuine whole-word occurrences.
+
+    page.search_for() is a raw substring search over glyph runs: it returns
+    a rect for "Mario" wherever those five characters appear contiguously,
+    including inside "Mariotti" or "mario2". Whether an occurrence is a
+    genuine whole word depends on the actual character immediately before/
+    after it on the page - a word character there means the match is
+    embedded in a longer word and must be dropped. This has to be checked
+    against real per-character positions from page.get_text("rawdict"),
+    not the coarser whitespace-delimited tokens page.get_text("words")
+    would give: that would wrongly reject "Mario," or "Mario-Luigi", since
+    get_text("words") glues trailing punctuation to the preceding word into
+    a single token even though a comma or hyphen is a perfectly legitimate
+    \\b boundary.
+    """
+    need_prefix, need_suffix = _needs_word_boundary(matched_text)
+    if not (need_prefix or need_suffix):
+        return rects
+    chars = _page_chars(page)
+    kept = []
+    for r in rects:
+        before = _adjacent_char(chars, r.x0, r.y0, r.y1, "before")
+        after = _adjacent_char(chars, r.x1, r.y0, r.y1, "after")
+        prefix_ok = not need_prefix or before is None or not _WORD_CHAR_RE.match(before)
+        suffix_ok = not need_suffix or after is None or not _WORD_CHAR_RE.match(after)
+        if prefix_ok and suffix_ok:
+            kept.append(r)
+    return kept
+
+
 def find_rects_for_pattern(
-    page: "fitz.Page", pattern: "re.Pattern", case_sensitive: bool
+    page: "fitz.Page", pattern: "re.Pattern", case_sensitive: bool, whole_word: bool = False,
 ) -> list["fitz.Rect"]:
     """
     Find the rectangles matching a compiled regex pattern on a page.
@@ -223,7 +339,12 @@ def find_rects_for_pattern(
     returns ALL occurrences of that string on the page), avoiding rectangle
     duplication when the same text appears more than once. If
     case_sensitive=True, filters the rectangles by checking the actual text
-    inside them, because search_for() is internally case-insensitive.
+    inside them, because search_for() is internally case-insensitive. If
+    whole_word=True (only meaningful for literal -t terms; -r patterns
+    should pass False and keep full manual control via their own \\b),
+    further filters the rectangles geometrically via
+    _filter_whole_word_rects() to drop occurrences embedded in a longer
+    word, since search_for() itself has no notion of word boundaries.
 
     A matched string that cannot be located on the page is reported on stderr:
     staying silent would mean the caller counts fewer redactions than the
@@ -239,6 +360,8 @@ def find_rects_for_pattern(
     rects = []
     for s in unique_strings:
         found = page.search_for(s) or []  # search_for() may return None
+        if whole_word:
+            found = _filter_whole_word_rects(page, s, found)
         if case_sensitive:
             # search_for() returns one rectangle per line the match spans, so a
             # match crossing a line break comes back as several fragments.
@@ -281,6 +404,7 @@ def redact_pdf(
     case_sensitive: bool,
     page_spec: str | None,
     fill_color: tuple[float, float, float] = (0, 0, 0),
+    whole_word: bool = DEFAULT_WHOLE_WORD,
 ) -> int:
     try:
         doc = fitz.open(input_path)
@@ -320,12 +444,21 @@ def redact_pdf(
 
         # A literal term is a regex with special characters escaped: this
         # unifies the search pipeline and ensures --case-sensitive works in
-        # both cases.
+        # both cases. Term and regex patterns are kept in separate lists
+        # (rather than one combined list) because whole_word geometric
+        # filtering must only ever apply to -t terms: -r patterns keep full
+        # manual control over their own boundaries, same as before.
         flags = 0 if case_sensitive else re.IGNORECASE
-        compiled_patterns = [re.compile(re.escape(t), flags) for t in terms]
+        term_patterns = [
+            re.compile(
+                _wrap_whole_word(t, re.escape(t)) if whole_word else re.escape(t), flags,
+            )
+            for t in terms
+        ]
+        regex_patterns = []
         for rx in regexes:
             try:
-                compiled_patterns.append(re.compile(rx, flags))
+                regex_patterns.append(re.compile(rx, flags))
             except re.error as exc:
                 fail(f"invalid regex '{rx}': {exc}")
 
@@ -335,7 +468,11 @@ def redact_pdf(
             rects = []
 
             if pno in target_pages:
-                for pattern in compiled_patterns:
+                for pattern in term_patterns:
+                    rects.extend(
+                        find_rects_for_pattern(page, pattern, case_sensitive, whole_word),
+                    )
+                for pattern in regex_patterns:
                     rects.extend(find_rects_for_pattern(page, pattern, case_sensitive))
 
             # A box entirely outside the page is accepted by add_redact_annot()

@@ -161,6 +161,7 @@ def test_load_config_valid_roundtrip(tmp_path):
         "boxes:\n"
         "  - '1:56,700,300,730'\n"
         "case_sensitive: true\n"
+        "whole_word: false\n"
         "pages: '1,2,5-7'\n"
         "fill_color: '#ff0000'\n"
     )
@@ -172,6 +173,7 @@ def test_load_config_valid_roundtrip(tmp_path):
         "regex": ["\\bMCNP-\\d{4}\\b"],
         "boxes": ["1:56,700,300,730"],
         "case_sensitive": True,
+        "whole_word": False,
         "pages": "1,2,5-7",
         "fill_color": "#ff0000",
     }
@@ -222,6 +224,7 @@ def test_load_config_unknown_key_fails(tmp_path):
     ("pages", "[1, 2]"),
     ("fill_color", "[1, 2]"),
     ("case_sensitive", "not-a-bool"),
+    ("whole_word", "not-a-bool"),
 ])
 def test_load_config_wrong_type_fails(tmp_path, key, bad_value):
     config_path = tmp_path / "config.yaml"
@@ -345,6 +348,46 @@ def test_redact_pdf_pages_restricts_text_search(sample_pdf, tmp_path):
     hits = redact_pdf(str(sample_pdf), str(out), ["sensitive data"], [], [], False, "1")
     assert hits == 0
     assert "sensitive data" in _extract_text(out, page_index=1)
+
+
+def test_redact_pdf_whole_word_default_skips_substring_match(make_pdf, tmp_path):
+    pdf = make_pdf("whole_word.pdf", ["Mariotti likes Mario Rossi and mario2 too."])
+    out = tmp_path / "out.pdf"
+    hits = redact_pdf(str(pdf), str(out), ["Mario"], [], [], False, None)
+    assert hits == 1
+    text = _extract_text(out)
+    # "Mariotti" and "mario2" stay fully intact; only the standalone "Mario"
+    # is redacted, so the substring "Mario" survives once (as the prefix of
+    # "Mariotti") rather than disappearing entirely.
+    assert "Mariotti" in text
+    assert "mario2" in text
+    assert text.count("Mario") == 1
+
+
+def test_redact_pdf_whole_word_false_matches_substring(make_pdf, tmp_path):
+    pdf = make_pdf("whole_word.pdf", ["Mariotti likes Mario Rossi and mario2 too."])
+    out = tmp_path / "out.pdf"
+    hits = redact_pdf(str(pdf), str(out), ["Mario"], [], [], False, None, whole_word=False)
+    assert hits == 3
+    text = _extract_text(out)
+    assert "Mario" not in text
+    assert "mario2" not in text
+
+
+def test_redact_pdf_whole_word_punctuation_edge_no_false_negative(make_pdf, tmp_path):
+    pdf = make_pdf(
+        "whole_word_punct.pdf",
+        ["Confidential: top secret. NonConfidential: not this one."],
+    )
+    out = tmp_path / "out.pdf"
+    hits = redact_pdf(str(pdf), str(out), ["Confidential:"], [], [], False, None)
+    assert hits == 1
+    text = _extract_text(out)
+    # "NonConfidential:" stays fully intact; only the standalone occurrence of
+    # "Confidential:" is redacted, so the substring survives once (as part of
+    # "NonConfidential:") rather than disappearing entirely.
+    assert "NonConfidential:" in text
+    assert text.count("Confidential:") == 1
 
 
 def test_redact_pdf_box_applies_regardless_of_pages_filter(sample_pdf, tmp_path):

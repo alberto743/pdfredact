@@ -81,6 +81,7 @@ terminal.
 pdfredact input.pdf output.pdf -t "Mario Rossi" -t "CF: ABCDEF"
 pdfredact input.pdf output.pdf -r "\bMCNP-\d{4}\b"
 pdfredact input.pdf output.pdf -t "Confidential" --case-sensitive
+pdfredact input.pdf output.pdf -t "Mario" --no-whole-word  # also matches "Mariotti"
 pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
 pdfredact input.pdf output.pdf --box "1:56,700,300,730"
 pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
@@ -98,6 +99,16 @@ Equivalent without installing, from the root of the repository:
 ```sh
 python -m pdfredact input.pdf output.pdf -t "Mario Rossi"
 ```
+
+### Whole-word matching
+
+By default, `-t/--text` terms only match on word boundaries: `-t "Mario"` redacts a standalone
+"Mario" but leaves "Mariotti" or "mario2" untouched. This only constrains the *edges* of a term
+that are themselves letters/digits, so a term ending in punctuation (e.g. `"Confidential:"`)
+still correctly matches even though nothing changes on that side - it just won't match inside
+"NonConfidential:" either. Use `--no-whole-word` (or `whole_word: false` in `--config`) to go
+back to plain substring matching. This only affects `-t`; `-r/--regex` patterns are never
+touched, since you already have full manual control there via your own `\b`.
 
 ### Rectangle coordinates (`--box`)
 
@@ -130,6 +141,7 @@ boxes:                        # explicit rectangles, same "PAGE:x0,y0,x1,y1" for
   - "1:56,700,300,730"
 
 case_sensitive: false         # like --case-sensitive
+whole_word: true               # like --whole-word
 pages: "1,2,5-7"               # like --pages
 fill_color: "#000000"          # like --fill-color
 ```
@@ -138,10 +150,11 @@ All keys are optional, and `pdfredact --config job.yaml` alone is a valid invoca
 is set in the file. Values from the config file and the command line are merged:
 
 - `text`, `regex`, and `boxes` from the command line are **added** to the config file's lists.
-- `input`, `output`, `pages`, `fill_color`, and `case-sensitive` from the command line
-  **override** the config file's value when explicitly passed. To override a config file's
+- `input`, `output`, `pages`, `fill_color`, `case-sensitive`, and `whole-word` from the command
+  line **override** the config file's value when explicitly passed. To override a config file's
   `case_sensitive: true` back to `false`, pass `--no-case-sensitive` (plain `--case-sensitive`
-  can only set it to `true`).
+  can only set it to `true`); likewise `--no-whole-word` overrides a config file's
+  `whole_word: true` back to `false`.
 
 Each key is validated the same way as its CLI equivalent (same `--box`/`--pages`/`--fill-color`
 formats); an unknown key or a value of the wrong type/shape fails immediately with exit code 2
@@ -161,6 +174,9 @@ rather than being silently ignored.
 - A term split across multiple lines in the PDF layout might not be found.
 - Scanned PDFs (image-only, with no extractable text) require OCR upstream: the tool finds
   nothing to redact in that case.
+- Whole-word matching (the default for `-t`) only checks the character immediately before/after
+  a match on the same line, so it's most reliable for terms that don't themselves span a line
+  break.
 
 Always verify the output with `pdftotext` and `pdfinfo -meta` before distribution.
 

@@ -83,6 +83,7 @@ un nuovo terminale.
 pdfredact input.pdf output.pdf -t "Mario Rossi" -t "CF: ABCDEF"
 pdfredact input.pdf output.pdf -r "\bMCNP-\d{4}\b"
 pdfredact input.pdf output.pdf -t "Confidenziale" --case-sensitive
+pdfredact input.pdf output.pdf -t "Mario" --no-whole-word  # oscura anche "Mariotti"
 pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
 pdfredact input.pdf output.pdf --box "1:56,700,300,730"
 pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
@@ -100,6 +101,17 @@ Equivalente senza installazione, dalla radice del repository:
 ```sh
 python -m pdfredact input.pdf output.pdf -t "Mario Rossi"
 ```
+
+### Corrispondenza per parola intera
+
+Per impostazione predefinita, i termini `-t/--text` vengono oscurati solo ai confini di parola:
+`-t "Mario"` oscura un "Mario" isolato ma lascia intatti "Mariotti" o "mario2". Questo vincola
+solo i *bordi* del termine che sono a loro volta lettere/cifre, quindi un termine che termina con
+punteggiatura (es. `"Confidenziale:"`) continua a corrispondere correttamente anche se su quel
+lato non cambia nulla - semplicemente non corrisponderà dentro "NonConfidenziale:". Usare
+`--no-whole-word` (o `whole_word: false` in `--config`) per tornare alla corrispondenza per
+sottostringa. Questo vale solo per `-t`; i pattern `-r/--regex` non sono mai toccati, dato che
+lì si ha già pieno controllo manuale tramite il proprio `\b`.
 
 ### Coordinate rettangolo (`--box`)
 
@@ -133,6 +145,7 @@ boxes:                         # rettangoli espliciti, stesso formato "PAGINA:x0
   - "1:56,700,300,730"
 
 case_sensitive: false          # come --case-sensitive
+whole_word: true                # come --whole-word
 pages: "1,2,5-7"                # come --pages
 fill_color: "#000000"           # come --fill-color
 ```
@@ -143,10 +156,12 @@ comando vengono uniti:
 
 - `text`, `regex` e `boxes` dalla riga di comando vengono **aggiunti** alle liste del file di
   configurazione.
-- `input`, `output`, `pages`, `fill_color` e `case-sensitive` dalla riga di comando **sovrascrivono**
-  il valore del file di configurazione quando specificati esplicitamente. Per riportare a `false`
-  un `case_sensitive: true` impostato nel file di configurazione, usare `--no-case-sensitive`
-  (il semplice `--case-sensitive` può solo impostarlo a `true`).
+- `input`, `output`, `pages`, `fill_color`, `case-sensitive` e `whole-word` dalla riga di comando
+  **sovrascrivono** il valore del file di configurazione quando specificati esplicitamente. Per
+  riportare a `false` un `case_sensitive: true` impostato nel file di configurazione, usare
+  `--no-case-sensitive` (il semplice `--case-sensitive` può solo impostarlo a `true`); allo
+  stesso modo `--no-whole-word` riporta a `false` un `whole_word: true` del file di
+  configurazione.
 
 Ogni chiave viene validata come il corrispondente parametro CLI (stessi formati di
 `--box`/`--pages`/`--fill-color`); una chiave sconosciuta o un valore di tipo/formato errato
@@ -166,6 +181,9 @@ termina immediatamente con codice di uscita 2 invece di essere ignorato silenzio
 - Un termine spezzato su più righe nel layout del PDF potrebbe non essere trovato.
 - I PDF scansionati (solo immagine, senza testo estraibile) richiedono OCR a monte: lo
   strumento non trova nulla da oscurare in quel caso.
+- La corrispondenza per parola intera (predefinita per `-t`) controlla solo il carattere
+  immediatamente prima/dopo una corrispondenza sulla stessa riga, quindi è più affidabile per
+  termini che non attraversano essi stessi un a capo.
 
 Verificare sempre l'output con `pdftotext` e `pdfinfo -meta` prima della distribuzione.
 

@@ -7,6 +7,7 @@ Usage:
     pdfredact input.pdf output.pdf -t "Mario Rossi" -t "CF: ABCDEF"
     pdfredact input.pdf output.pdf -r "\\bMCNP-\\d{4}\\b"
     pdfredact input.pdf output.pdf -t "Confidential" --case-sensitive
+    pdfredact input.pdf output.pdf -t "Mario" --no-whole-word  # also matches "Mariotti"
     pdfredact input.pdf output.pdf -t "foo" --pages 1,2,5-7
     pdfredact input.pdf output.pdf --box "1:56,700,300,730"
     pdfredact input.pdf output.pdf -t "foo" --fill-color "#ff0000"
@@ -34,7 +35,8 @@ import sys
 
 from . import __version__
 from .core import (
-    DEFAULT_FILL_COLOR, fail, load_config, parse_box_spec, parse_fill_color, redact_pdf,
+    DEFAULT_FILL_COLOR, DEFAULT_WHOLE_WORD, fail, load_config, parse_box_spec,
+    parse_fill_color, redact_pdf,
 )
 
 
@@ -63,6 +65,12 @@ def main() -> None:
                     help="Case-sensitive search (default: case-insensitive). Use "
                          "--no-case-sensitive to override a config file's "
                          "'case_sensitive: true' back to false")
+    ap.add_argument("--whole-word", action=argparse.BooleanOptionalAction, default=None,
+                    help="Match -t/--text terms only on word boundaries, e.g. -t "
+                         "'Mario' won't touch 'Mariotti' (default: on; does not "
+                         "affect -r/--regex). Use --no-whole-word for substring "
+                         "matching, or to override a config file's "
+                         "'whole_word: true' back to false")
     ap.add_argument("--pages", dest="pages", default=None,
                     help="Pages for text search (-t/-r), e.g. '1,2,5-7' "
                          "(default: all; does not affect --box)")
@@ -87,6 +95,10 @@ def main() -> None:
     case_sensitive = (
         args.case_sensitive if args.case_sensitive is not None
         else config.get("case_sensitive", False)
+    )
+    whole_word = (
+        args.whole_word if args.whole_word is not None
+        else config.get("whole_word", DEFAULT_WHOLE_WORD)
     )
     pages = args.pages if args.pages is not None else config.get("pages")
     fill_color_spec = (
@@ -120,7 +132,7 @@ def main() -> None:
 
     hits = redact_pdf(
         input_path, output_path, terms, regexes, parsed_boxes,
-        case_sensitive, pages, fill_color,
+        case_sensitive, pages, fill_color, whole_word,
     )
 
     print(f"Occurrences redacted (unique rectangles): {hits}")

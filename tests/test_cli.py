@@ -226,6 +226,36 @@ def test_cli_no_case_sensitive_overrides_config_true(sample_pdf, tmp_path):
     assert "Occurrences redacted (unique rectangles): 2" in result.stdout
 
 
+def test_cli_whole_word_default_narrows_match(make_pdf, tmp_path):
+    """No --whole-word flag passed: the new on-by-default behavior applies,
+    so only the standalone "Mario" is redacted, not the one inside
+    "Mariotti" or "mario2"."""
+    pdf = make_pdf("whole_word.pdf", ["Mariotti likes Mario Rossi and mario2 too."])
+    out = tmp_path / "out.pdf"
+    result = run_cli(str(pdf), str(out), "-t", "Mario")
+    assert result.returncode == 0
+    assert "Occurrences redacted (unique rectangles): 1" in result.stdout
+
+
+def test_cli_no_whole_word_overrides_config_true(make_pdf, tmp_path):
+    """--no-whole-word must be able to force whole_word back to false even
+    when the config file sets whole_word: true, restoring substring
+    matching (all 3 occurrences of "Mario")."""
+    pdf = make_pdf("whole_word.pdf", ["Mariotti likes Mario Rossi and mario2 too."])
+    out = tmp_path / "out.pdf"
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "text:\n"
+        "  - Mario\n"
+        "whole_word: true\n"
+    )
+    result = run_cli(
+        str(pdf), str(out), "--config", str(config_path), "--no-whole-word",
+    )
+    assert result.returncode == 0
+    assert "Occurrences redacted (unique rectangles): 3" in result.stdout
+
+
 def test_cli_output_positional_overrides_config_output(sample_pdf, tmp_path):
     cli_out = tmp_path / "cli_out.pdf"
     config_out = tmp_path / "config_out.pdf"
