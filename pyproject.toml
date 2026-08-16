@@ -10,7 +10,7 @@ name = "pdfredactcli"
 version = "0.2.1"
 description = "Redact text in a PDF (true redaction, not just visual overlay) using PyMuPDF"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "MPL-2.0"
 authors = [
     { name = "Alberto P." },

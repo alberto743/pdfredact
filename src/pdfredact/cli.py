@@ -27,8 +27,6 @@ Exit codes:
     0 = success   2 = input/usage error
 """
 
-from __future__ import annotations
-
 import argparse
 import os
 import sys

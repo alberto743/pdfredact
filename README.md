@@ -9,7 +9,7 @@ underlying text (not recoverable via copy-paste or text extraction).
 
 ## Installation
 
-Requires Python 3.9 or later. Dependencies are PyMuPDF and PyYAML (for `--config`), both of
+Requires Python 3.10 or later. Dependencies are PyMuPDF and PyYAML (for `--config`), both of
 which publish prebuilt wheels for Linux, Windows, and macOS (no compiler required).
 
 The package is published on PyPI as [`pdfredactcli`](https://pypi.org/project/pdfredactcli/)

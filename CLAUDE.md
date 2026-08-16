@@ -22,15 +22,16 @@ REUSE" below). Hosted at `https://github.com/alberto743/pdfredact`.
 pip install -e .[test]
 ```
 
-Requires Python 3.9+. `core.py`/`cli.py` use `list[str]`, `set[int]`, `X | None`-style hints
-freely, but every file that does starts with `from __future__ import annotations` (PEP 563), so
-those annotations are never evaluated at runtime and don't force a 3.10 floor — the runtime code
-itself (walrus operator, f-strings, plain-builtin `isinstance()` checks,
-`argparse.BooleanOptionalAction`, added in 3.9) is 3.9-safe, which is why `requires-python` is
-`>=3.9` rather than `>=3.10`. Don't add real 3.10+-only runtime syntax (`match`/`case`, `X | Y`
-outside an annotation, `zip(strict=)`, `except*`) without bumping this back up. Runtime
-dependencies are `pymupdf` and `pyyaml` (for `--config`), both of which ship prebuilt wheels for
-Linux/Windows/macOS — no compiler needed anywhere — including for Python 3.9. Build backend is
+Requires Python 3.10+ (bumped from the original 3.9 floor once 3.9 reached end-of-life).
+`core.py`/`cli.py` use `list[str]`, `set[int]`, `X | None`-style hints directly as real runtime
+expressions — `X | Y` union syntax (PEP 604) needs 3.10 at runtime, which is why neither file
+carries a `from __future__ import annotations` (PEP 563) anymore: that import used to be the
+only thing letting those hints run on 3.9, and dropping the 3.9 floor made it dead weight. Don't
+reintroduce it as a stylistic default; postponed evaluation is opt-in only, not automatic in any
+current Python version (the plan to make it default in 3.10 was reverted). `match`/`case` and
+`zip(strict=)` are fair game now too; `except*` still needs 3.11, so don't add it without bumping
+the floor again. Runtime dependencies are `pymupdf` and `pyyaml` (for `--config`), both of which
+ship prebuilt wheels for Linux/Windows/macOS — no compiler needed anywhere. Build backend is
 Hatchling (`[build-system]` in `pyproject.toml`); package discovery is explicit via
 `[tool.hatch.build.targets.wheel] packages = ["src/pdfredact"]`.
 
@@ -237,11 +238,11 @@ it's a manual check.
 ## CI
 
 - `.github/workflows/tests.yml` — pytest on the `os × python-version` matrix
-  (ubuntu/windows/macos × 3.9–3.13) on every push and PR.
+  (ubuntu/windows/macos × 3.10–3.13) on every push and PR.
 - `.github/workflows/wheels.yml` — builds the wheel once (`build` job, `python -m build --wheel`)
   then, in a separate `test` job, downloads that artifact and runs `pytest` against the
   *installed wheel* across the OS × Python-version matrix (ubuntu-latest/windows-latest ×
-  3.9–3.13) — this catches packaging bugs (e.g. a file missing from the wheel) that an editable
+  3.10–3.13) — this catches packaging bugs (e.g. a file missing from the wheel) that an editable
   install in `tests.yml` wouldn't. Deliberately does **not** use `pypa/cibuildwheel`: that tool
   is for producing platform-specific (compiled-extension) wheels and, as of newer releases,
   actively refuses to build a pure-Python wheel like this package's (see

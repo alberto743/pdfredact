@@ -9,8 +9,6 @@ apply_redactions(), physically removing the underlying text (not
 recoverable via copy-paste or text extraction).
 """
 
-from __future__ import annotations
-
 import math
 import re
 import sys
@@ -19,11 +17,9 @@ from typing import NoReturn
 import yaml
 
 # The `fitz` alias is deprecated and prints a warning to stdout, polluting
-# output in pipelines; the canonical name is preferred when available.
-try:
-    import pymupdf as fitz
-except ImportError:  # PyMuPDF < 1.24
-    import fitz
+# output in pipelines; the canonical name is used instead (guaranteed
+# available by the pymupdf>=1.24 dependency floor in pyproject.toml).
+import pymupdf as fitz
 
 DEFAULT_FILL_COLOR = "#000000"
 DEFAULT_WHOLE_WORD = True
