@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Alberto P.
+# SPDX-License-Identifier: MPL-2.0
+name: reuse
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  reuse-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: REUSE compliance check
+        uses: fsfe/reuse-action@v6

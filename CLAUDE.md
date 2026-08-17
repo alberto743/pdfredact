@@ -235,8 +235,8 @@ source file (`.py`, `.toml`, `.yml`) carries a 2-line SPDX header
 (`SPDX-FileCopyrightText: 2026 Alberto P.` / `SPDX-License-Identifier: MPL-2.0`); files that
 can't carry a header comment (`README.md`, `README.it.md`, this file, `.gitignore`, `COPYING`)
 are annotated instead via `REUSE.toml`. Check compliance with `pipx run reuse lint` (or
-`reuse lint` if the `reuse` tool is already installed) — there's no dedicated CI job for this,
-it's a manual check.
+`reuse lint` if the `reuse` tool is already installed); `.github/workflows/reuse.yml` runs the
+same check in CI via `fsfe/reuse-action` on every push and PR.
 
 ## CI
 
@@ -260,4 +260,6 @@ it's a manual check.
   from the importable package/console-script name `pdfredact`) — `pyproject.toml`'s `[project]
   name` and `__init__.py`'s `importlib.metadata.version("pdfredactcli")` lookup must stay in sync
   with this if either ever changes.
+- `.github/workflows/reuse.yml` — runs `fsfe/reuse-action` (REUSE license/SPDX-header compliance)
+  on every push and PR.
 - `.github/dependabot.yml` — weekly updates for the `pip` and `github-actions` ecosystems.
